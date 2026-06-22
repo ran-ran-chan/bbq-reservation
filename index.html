@@ -151,10 +151,8 @@
   /* print */
   #printArea{display:none;}
   @media print{
-    body *{visibility:hidden;}
-    #printArea, #printArea *{visibility:visible;}
-    #printArea{display:block !important;position:absolute;top:0;left:0;width:100%;padding:16px;}
-    .no-print{display:none !important;}
+    #app, .modal-overlay, .toast{display:none !important;}
+    #printArea{display:block !important;padding:16px;}
   }
   .print-ledger-table{width:100%;border-collapse:collapse;font-size:11px;}
   .print-ledger-table th,.print-ledger-table td{border:1px solid #999;padding:4px 6px;text-align:left;}
@@ -239,7 +237,7 @@
     <table class="res-table">
       <thead>
         <tr>
-          <th>日付</th><th>時間</th><th>卓</th><th>大/小/未</th><th>名前</th><th>連絡先</th><th>経由</th><th>オプション</th><th>金額</th><th>担当</th><th>来場</th><th>状態</th><th></th>
+          <th>日付</th><th>時間</th><th>卓</th><th>大/小/未</th><th>名前</th><th>連絡先</th><th>経由</th><th>オプション</th><th>金額</th><th>担当</th><th>来場</th><th>状態</th><th>登録日</th><th></th>
         </tr>
       </thead>
       <tbody id="resTableBody"></tbody>
@@ -450,6 +448,7 @@
       <div class="field">
         <label class="check-inline"><input type="checkbox" id="f_arrived"> 来場済み（当日、来場後にチェック）</label>
       </div>
+      <div class="hint hidden" id="createdAtInfo"></div>
 
       <div class="cancel-section hidden" id="cancelSection"></div>
 
@@ -503,6 +502,7 @@ const DEFAULT_OPTION_CATALOG = [
 ];
 const DEFAULT_CANCEL_POLICY_FOOD = [ {daysBefore:3, feePercent:100} ];
 const DEFAULT_CANCEL_POLICY_USAGE = [ {daysBefore:1, feePercent:50}, {daysBefore:0, feePercent:100} ];
+const TAX_RATE = 0.10; // 設定金額は税込（10%）という前提で、キャンセル料は税抜金額に料率をかけて算出する
 const FOOD_DEADLINE_DAYS = 4;
 const FOOD_DEADLINE_HOUR = 16;
 
@@ -554,6 +554,12 @@ function fmtDuration(min){
 function fmtYen(n){
   return "¥" + Math.round(n||0).toLocaleString("ja-JP");
 }
+function fmtDateTimeJP(iso){
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()} ${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
 function weekdayLabel(dateStr){
   const d = new Date(dateStr+"T00:00:00");
   const wd = WD_JA[d.getDay()];
@@ -577,8 +583,12 @@ function escapeHtml(s){
 function displayName(r){
   return r.nameKanji ? r.nameKanji : r.nameKana;
 }
+function displayNameWithKana(r){
+  if (r.nameKanji) return `${escapeHtml(r.nameKanji)}（${escapeHtml(r.nameKana)}）`;
+  return escapeHtml(r.nameKana);
+}
 function tablesLabel(r){
-  if (r.tables && r.tables.length>0) return r.tables.map(t=>"卓"+t).join("・");
+  if (r.tables && r.tables.length>0) return `${r.tables.map(t=>"卓"+t).join("・")}（${r.tables.length}卓）`;
   const ppl = r.counts ? (r.counts.adult+r.counts.child+r.counts.infant) : 0;
   const suggest = Math.max(1, Math.ceil(ppl/4));
   return `未割当(目安${suggest}卓)`;
@@ -800,8 +810,8 @@ async function renderTimeline(){
       const srcIcon = r.source === "phone" ? "📞" : "📝";
       const optsText = (r.options||[]).map(o=>`${o.label}×${o.qty}`).join(" / ");
       const isCancelled = r.status === "cancelled";
-      blocksHtml += `<div class="res-block ${r.arrived?'arrived':''} ${isCancelled?'cancelled':''}" style="left:${left}%;width:${width}%;background:${hashColor(r.id)}" data-id="${r.id}" title="${escapeHtml(displayName(r))} ${r.start}-${endLabel}">
-        <div class="rb-name">${srcIcon} ${escapeHtml(displayName(r))}${r.arrived?' ✓':''}${isCancelled?' (キャンセル)':''}</div>
+      blocksHtml += `<div class="res-block ${r.arrived?'arrived':''} ${isCancelled?'cancelled':''}" style="left:${left}%;width:${width}%;background:${hashColor(r.id)}" data-id="${r.id}" title="${displayNameWithKana(r)} ${r.start}-${endLabel}">
+        <div class="rb-name">${srcIcon} ${displayNameWithKana(r)}${r.arrived?' ✓':''}${isCancelled?' (キャンセル)':''}</div>
         <div class="rb-meta">${r.start}-${endLabel}・${(r.counts?(r.counts.adult+r.counts.child+r.counts.infant):0)}名${optsText?(' ・'+escapeHtml(optsText)):''}</div>
       </div>`;
     });
@@ -856,7 +866,7 @@ function renderUnassignedPanel(fullList){
   const items = unassigned.slice().sort((a,b)=>a.start.localeCompare(b.start)).map(r=>{
     const ppl = r.counts ? (r.counts.adult+r.counts.child+r.counts.infant) : 0;
     const suggest = Math.max(1, Math.ceil(ppl/4));
-    return `<span class="tag" style="cursor:pointer;" data-unassigned-edit="${r.id}">${r.start} ${escapeHtml(displayName(r))}（${ppl}名・目安${suggest}卓）→卓を割り当てる</span>`;
+    return `<span class="tag" style="cursor:pointer;" data-unassigned-edit="${r.id}">${r.start} ${displayNameWithKana(r)}（${ppl}名・目安${suggest}卓）→卓を割り当てる</span>`;
   }).join(" ");
   panel.innerHTML = `<b>⚠ 卓が未割当の予約（${unassigned.length}件・当日割り振り予定）：</b><br>${items}`;
   panel.querySelectorAll("[data-unassigned-edit]").forEach(el=>{
@@ -876,7 +886,7 @@ function renderList(){
 
   const body = document.getElementById("resTableBody");
   if (rows.length === 0){
-    body.innerHTML = `<tr><td colspan="13"><div class="empty-state">${q?"該当する予約が見つかりません。":"まだ予約がありません。「＋予約を追加」から登録してください。"}</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="14"><div class="empty-state">${q?"該当する予約が見つかりません。":"まだ予約がありません。「＋予約を追加」から登録してください。"}</div></td></tr>`;
     return;
   }
   body.innerHTML = rows.map(r=>{
@@ -890,7 +900,7 @@ function renderList(){
       <td>${r.start}-${endLabel}</td>
       <td>${tablesLabel(r)}</td>
       <td>${c.adult}/${c.child}/${c.infant}</td>
-      <td>${escapeHtml(displayName(r))}${r.nameKanji?(' <span style="color:var(--muted)">('+escapeHtml(r.nameKana)+')</span>'):''}</td>
+      <td>${displayNameWithKana(r)}</td>
       <td>${escapeHtml(r.phone||"")}</td>
       <td><span class="src-tag ${r.source}">${r.source==="phone"?"📞電話":"📝フォーム"}</span></td>
       <td>${optsText}</td>
@@ -898,6 +908,7 @@ function renderList(){
       <td>${escapeHtml(r.staff||"")}</td>
       <td><span class="arrived-chip ${r.arrived?'yes':'no'}" data-id="${r.id}" data-date="${r.date}">${r.arrived?"来場済":"未来場"}</span></td>
       <td><span class="status-tag ${isCancelled?'cancelled':'active'}">${isCancelled?("キャンセル "+(r.cancelFeeAmount!=null?fmtYen(r.cancelFeeAmount)+"(非課税)":"")):"通常"}</span></td>
+      <td>${fmtDateTimeJP(r.createdAt)}</td>
       <td class="row-actions"><button class="icon-btn" data-edit="${r.id}" data-date="${r.date}">編集</button></td>
     </tr>`;
   }).join("");
@@ -1179,13 +1190,15 @@ function showCancelCalc(record){
   const usagePercent = lookupTierPercent(state.settings.cancelPolicyUsage, daysUntil);
   const foodSubtotal = record.foodSubtotal || 0;
   const usageSubtotal = record.usageSubtotal || (record.totalAmount||0);
-  const foodFee = Math.round(foodSubtotal*foodPercent/100);
-  const usageFee = Math.round(usageSubtotal*usagePercent/100);
+  const foodSubtotalExTax = foodSubtotal / (1+TAX_RATE);
+  const usageSubtotalExTax = usageSubtotal / (1+TAX_RATE);
+  const foodFee = Math.round(foodSubtotalExTax*foodPercent/100);
+  const usageFee = Math.round(usageSubtotalExTax*usagePercent/100);
   const area = document.getElementById("cancelCalcArea");
   area.innerHTML = `
-    <div class="hint">来場予定日まで残り${daysUntil}日</div>
-    <div class="price-field"><span>食材費 ${fmtYen(foodSubtotal)} → 料率${foodPercent}%（手動で調整可）</span><input type="number" id="cancelFoodOverride" value="${foodFee}" min="0"></div>
-    <div class="price-field"><span>利用料 ${fmtYen(usageSubtotal)} → 料率${usagePercent}%（手動で調整可）</span><input type="number" id="cancelUsageOverride" value="${usageFee}" min="0"></div>
+    <div class="hint">来場予定日まで残り${daysUntil}日（設定金額は税込のため、税抜金額に料率をかけて算出しています）</div>
+    <div class="price-field"><span>食材費 ${fmtYen(foodSubtotal)}(税込)→税抜${fmtYen(foodSubtotalExTax)} → 料率${foodPercent}%（手動で調整可）</span><input type="number" id="cancelFoodOverride" value="${foodFee}" min="0"></div>
+    <div class="price-field"><span>利用料 ${fmtYen(usageSubtotal)}(税込)→税抜${fmtYen(usageSubtotalExTax)} → 料率${usagePercent}%（手動で調整可）</span><input type="number" id="cancelUsageOverride" value="${usageFee}" min="0"></div>
     <div class="hint">※キャンセル料は消費税非課税として計算しています。</div>
     <button type="button" class="danger-btn" id="confirmCancelBtn">この内容でキャンセル確定</button>
   `;
@@ -1261,6 +1274,7 @@ async function openAddModal(){
   updateFeeAndSuggestion();
   document.getElementById("deleteBtn").classList.add("hidden");
   document.getElementById("printSlipBtn").classList.add("hidden");
+  document.getElementById("createdAtInfo").classList.add("hidden");
   renderCancelSection(null);
   openModal();
 }
@@ -1299,6 +1313,9 @@ async function openEditModal(id, date){
   updateFeeAndSuggestion();
   document.getElementById("deleteBtn").classList.remove("hidden");
   document.getElementById("printSlipBtn").classList.remove("hidden");
+  const createdInfo = document.getElementById("createdAtInfo");
+  createdInfo.textContent = `登録日時：${fmtDateTimeJP(r.createdAt)}${r.updatedAt && r.updatedAt!==r.createdAt ? "　／　最終更新："+fmtDateTimeJP(r.updatedAt) : ""}`;
+  createdInfo.classList.remove("hidden");
   renderCancelSection(r);
   openModal();
 }
@@ -1399,7 +1416,7 @@ function printDayLedger(){
       return `<tr>
         <td>${tablesLabel(r)}</td>
         <td>${r.start}-${end}</td>
-        <td>${escapeHtml(displayName(r))}</td>
+        <td>${displayNameWithKana(r)}</td>
         <td>${c.adult}/${c.child}/${c.infant}</td>
         <td>${totalPeople}名</td>
         <td>${escapeHtml(r.phone||"")}</td>
@@ -1430,8 +1447,7 @@ function buildSlipHtml(record){
     ? `<div class="row total"><span>キャンセル料（非課税）</span><span>${fmtYen(record.cancelFeeAmount)}</span></div>` : "";
   return `
     <div class="print-slip">
-      <h2>${escapeHtml(displayName(record))}様</h2>
-      ${record.nameKanji?`<div class="hint">フリガナ：${escapeHtml(record.nameKana)}</div>`:""}
+      <h2>${displayNameWithKana(record)}様</h2>
       <div class="row"><span>日付</span><span>${fmtDateJP(record.date)}（${weekdayLabel(record.date)}）</span></div>
       <div class="row"><span>時間</span><span>${record.start} - ${end}</span></div>
       <div class="row"><span>テーブル</span><span>${tablesLabel(record)}</span></div>
@@ -1439,7 +1455,6 @@ function buildSlipHtml(record){
       ${optsHtml}
       <div class="row total"><span>合計金額</span><span>${fmtYen(record.totalAmount)}</span></div>
       ${cancelHtml}
-      <div class="row"><span>担当</span><span>${escapeHtml(record.staff||"")}</span></div>
       ${record.notes?`<div class="row"><span>メモ</span><span>${escapeHtml(record.notes)}</span></div>`:""}
     </div>
   `;
@@ -1512,7 +1527,7 @@ async function renderLedgerView(){
     return `<tr class="${isCancelled?'is-cancelled':''}">
       <td>${tablesLabel(r)}</td>
       <td>${r.start}-${end}</td>
-      <td>${escapeHtml(displayName(r))}</td>
+      <td>${displayNameWithKana(r)}</td>
       <td>${c.adult}/${c.child}/${c.infant}</td>
       <td>${totalPeople}名</td>
       <td>${escapeHtml(r.phone||"")}</td>
@@ -1828,7 +1843,21 @@ function init(){
     showToast("追加しました");
   });
 
-  refreshCurrentView(true);
+  startup();
+}
+
+function computeSmartDefaultDate(){
+  const today = toISODate(new Date());
+  const dates = combinedDateList();
+  const upcoming = dates.find(d => d >= today);
+  return upcoming || dates[0] || null;
+}
+async function startup(){
+  if (!state.settingsLoaded) await loadSettings();
+  await ensureAllLoaded();
+  const smartDate = computeSmartDefaultDate();
+  if (smartDate) state.currentDate = smartDate;
+  await refreshCurrentView(false);
   setInterval(()=>{
     if (document.getElementById("modalOverlay").classList.contains("hidden")) refreshCurrentView(true);
   }, 30000);
