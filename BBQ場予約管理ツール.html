@@ -1,0 +1,1840 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BBQ場 予約管理</title>
+<style>
+  :root{
+    --bg:#f6f2ea; --panel:#fffdf9; --ink:#2b2620; --muted:#8a7f6e; --line:#e3dccb;
+    --accent:#3f6d4e; --accent-dark:#2e5239; --ember:#c1632f; --danger:#b3432f; --today:#c1632f;
+    --cancel:#9a8f80;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Hiragino Sans","Hiragino Kaku Gothic ProN","Noto Sans JP","Yu Gothic UI",sans-serif;
+    background:var(--bg); color:var(--ink); -webkit-font-smoothing:antialiased;
+  }
+  #app{max-width:1450px;margin:0 auto;padding:16px 20px 60px;}
+
+  .topbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;}
+  .brand{display:flex;align-items:center;gap:12px;}
+  .brand-mark{font-size:28px;line-height:1;}
+  .brand h1{font-size:19px;margin:0;font-weight:700;letter-spacing:.02em;}
+  .brand .sub{margin:2px 0 0;font-size:12px;color:var(--muted);}
+  .topbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .view-toggle{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;}
+  .toggle-btn{border:none;background:transparent;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;}
+  .toggle-btn.active{background:var(--accent);color:#fff;}
+  .ghost-btn{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font-size:12px;color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:6px;}
+  .ghost-btn:hover{border-color:var(--accent);}
+  .updated-at{font-size:11px;color:var(--muted);}
+
+  .primary-btn{background:var(--accent);color:#fff;border:none;border-radius:9px;padding:9px 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;}
+  .primary-btn:hover{background:var(--accent-dark);}
+  .secondary-btn{background:#fff;border:1px solid var(--line);border-radius:9px;padding:9px 16px;font-size:13px;cursor:pointer;}
+  .danger-btn{background:#fff;border:1px solid var(--danger);color:var(--danger);border-radius:9px;padding:9px 16px;font-size:13px;cursor:pointer;}
+  .danger-btn.confirming{background:var(--danger);color:#fff;}
+  .warn-btn{background:#fff;border:1px solid var(--ember);color:var(--ember);border-radius:9px;padding:9px 16px;font-size:13px;cursor:pointer;}
+  .hidden{display:none !important;}
+
+  .date-nav{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:10px;}
+  .nav-btn{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:8px 12px;font-size:13px;cursor:pointer;color:var(--ink);}
+  .nav-btn:hover{border-color:var(--accent);}
+  .date-display{display:flex;align-items:center;gap:10px;background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:6px 12px;}
+  .date-display input[type=date]{border:none;font-size:14px;font-weight:700;background:transparent;color:var(--ink);}
+  .date-display .wd{font-size:12px;color:var(--ember);font-weight:700;}
+  .irregular-tag{font-size:11px;background:#f3dcc2;color:var(--ember);border-radius:6px;padding:2px 7px;font-weight:700;}
+  .spacer{flex:1;}
+  .check-inline{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);}
+
+  .day-summary{display:flex;gap:18px;flex-wrap:wrap;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:10px 16px;margin-bottom:14px;font-size:13px;color:var(--muted);}
+  .day-summary b{color:var(--ink);font-size:15px;margin-right:4px;}
+
+  .timeline-wrap{background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;}
+  .timeline-scroll{overflow:auto;max-height:68vh;position:relative;}
+  .timeline-grid{display:grid;grid-template-columns:72px 1fr;min-width:780px;}
+  .axis-corner{position:sticky;top:0;left:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);border-right:1px solid var(--line);}
+  .axis-track{position:sticky;top:0;z-index:4;background:var(--panel);border-bottom:1px solid var(--line);height:34px;position:relative;}
+  .axis-tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--line);font-size:11px;color:var(--muted);padding:8px 0 0 4px;}
+  .axis-gap{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg, #efe9da, #efe9da 4px, #f6f2ea 4px, #f6f2ea 8px);}
+  .row-label{position:sticky;left:0;z-index:3;background:var(--panel);border-right:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;font-weight:700;padding:6px 2px;text-align:center;}
+  .row-label small{font-weight:500;color:var(--muted);font-size:10px;}
+  .row-track{position:relative;border-bottom:1px solid var(--line);height:56px;background-image:linear-gradient(to right, var(--line) 1px, transparent 1px);background-size:10% 100%;}
+  .now-line{position:absolute;top:0;bottom:0;width:2px;background:var(--today);z-index:6;}
+  .res-block{position:absolute;top:5px;bottom:5px;border-radius:7px;padding:4px 8px;font-size:11.5px;line-height:1.3;overflow:hidden;cursor:pointer;border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 2px rgba(0,0,0,.06);}
+  .res-block .rb-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .res-block .rb-meta{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .res-block.arrived{box-shadow:inset 0 0 0 2px var(--accent);}
+  .res-block.cancelled{opacity:.45;background:#e4ded2 !important;text-decoration:line-through;}
+
+  .empty-state{padding:50px 20px;text-align:center;color:var(--muted);font-size:13px;}
+
+  .view.hidden{display:none;}
+  .search-bar{display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap;}
+  .search-bar input{flex:1;max-width:360px;padding:9px 12px;border:1px solid var(--line);border-radius:9px;font-size:13px;background:var(--panel);}
+  table.res-table{width:100%;border-collapse:collapse;background:var(--panel);border:1px solid var(--line);border-radius:12px;overflow:hidden;font-size:12.5px;}
+  table.res-table th,table.res-table td{padding:8px 9px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top;}
+  table.res-table th{background:#efe9da;font-size:11px;color:var(--muted);font-weight:700;white-space:nowrap;}
+  table.res-table tr:last-child td{border-bottom:none;}
+  table.res-table tr.is-cancelled{opacity:.55;}
+  .tag{display:inline-block;background:#efe9da;border-radius:6px;padding:1px 7px;font-size:11px;margin:1px 3px 1px 0;color:var(--ink);}
+  .src-tag{font-size:11px;padding:2px 7px;border-radius:6px;font-weight:700;white-space:nowrap;}
+  .src-tag.phone{background:#e8d9cd;color:var(--ember);}
+  .src-tag.form{background:#dbe7de;color:var(--accent-dark);}
+  .status-tag{font-size:11px;padding:2px 7px;border-radius:6px;font-weight:700;}
+  .status-tag.active{background:#dbe7de;color:var(--accent-dark);}
+  .status-tag.cancelled{background:#e8d9cd;color:var(--danger);}
+  .arrived-chip{font-size:11px;font-weight:700;border-radius:6px;padding:2px 8px;cursor:pointer;border:1px solid var(--line);white-space:nowrap;}
+  .arrived-chip.yes{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .arrived-chip.no{background:#fff;color:var(--muted);}
+  .row-actions{display:flex;gap:6px;}
+  .icon-btn{border:1px solid var(--line);background:#fff;border-radius:6px;padding:4px 8px;font-size:12px;cursor:pointer;}
+  .icon-btn:hover{border-color:var(--accent);}
+
+  .modal-overlay{position:fixed;inset:0;background:rgba(30,25,18,.45);display:flex;align-items:flex-start;justify-content:center;padding:30px 16px;z-index:50;overflow:auto;}
+  .modal-overlay.hidden{display:none;}
+  .modal{background:#fff;border-radius:14px;width:100%;max-width:620px;padding:22px 24px 20px;box-shadow:0 12px 40px rgba(0,0,0,.25);}
+  .modal h2{margin:0 0 14px;font-size:17px;display:flex;align-items:center;gap:10px;}
+  .field-row{display:flex;gap:12px;margin-bottom:12px;flex-wrap:wrap;}
+  .field{flex:1;min-width:140px;margin-bottom:12px;}
+  .field-row .field{margin-bottom:0;}
+  .field label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600;}
+  .field input[type=text],.field input[type=tel],.field input[type=number],.field input[type=date],.field select,.field textarea{
+    width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:13.5px;font-family:inherit;background:#fdfbf7;
+  }
+  .field textarea{resize:vertical;min-height:54px;}
+  .field input[readonly]{background:#efe9da;color:var(--muted);}
+  .radio-group{display:flex;gap:14px;margin-top:6px;align-items:center;height:34px;}
+  .radio-group label{display:flex;align-items:center;gap:5px;font-size:13px;font-weight:500;color:var(--ink);cursor:pointer;}
+  .hint{font-size:11.5px;color:var(--muted);margin-top:4px;}
+  .table-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:6px;margin-top:4px;}
+  .table-chip{border:1px solid var(--line);border-radius:8px;padding:6px 0;text-align:center;font-size:12px;cursor:pointer;background:#fdfbf7;position:relative;user-select:none;}
+  .table-chip.selected{background:var(--accent);color:#fff;border-color:var(--accent);}
+  .table-chip.busy::after{content:"●";position:absolute;top:2px;right:5px;font-size:8px;color:var(--ember);}
+  .table-chip.selected.busy::after{color:#ffd9c0;}
+  .options-area{margin-top:4px;}
+  .option-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:8px;}
+  .preset-btn{border:1px solid var(--line);background:#fdfbf7;border-radius:7px;padding:5px 10px;font-size:12px;cursor:pointer;}
+  .preset-btn:hover{border-color:var(--accent);}
+  .option-chip{display:inline-flex;align-items:center;gap:6px;background:#efe9da;border-radius:7px;padding:4px 6px 4px 10px;font-size:12px;margin:0 6px 6px 0;}
+  .option-chip input{width:42px;border:none;background:#fff;border-radius:4px;padding:2px 4px;font-size:12px;}
+  .option-chip .rm{cursor:pointer;color:var(--danger);font-weight:700;padding:0 4px;}
+  .custom-option-row{display:flex;gap:6px;margin-top:4px;flex-wrap:wrap;}
+  .custom-option-row input{flex:1;min-width:90px;}
+  .fee-box{background:#f1ece0;border-radius:10px;padding:10px 14px;font-size:13px;margin-top:4px;}
+  .fee-box .row{display:flex;justify-content:space-between;padding:2px 0;color:var(--muted);}
+  .fee-box .row.total{color:var(--ink);font-weight:700;font-size:15px;border-top:1px solid var(--line);margin-top:4px;padding-top:6px;}
+  .cancel-section{background:#fbf1e8;border:1px solid #ecd9bf;border-radius:10px;padding:12px 14px;margin-top:6px;}
+  .cancel-section h4{margin:0 0 8px;font-size:13px;}
+  .modal-actions{display:flex;justify-content:space-between;align-items:center;margin-top:18px;flex-wrap:wrap;gap:10px;}
+  .modal-actions .left{display:flex;gap:8px;flex-wrap:wrap;}
+
+  .toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);color:#fff;padding:10px 18px;border-radius:9px;font-size:13px;z-index:80;box-shadow:0 6px 20px rgba(0,0,0,.2);}
+  .toast.hidden{display:none;}
+  .note-banner{font-size:11.5px;color:var(--muted);text-align:center;margin-top:18px;line-height:1.6;}
+
+  /* settings */
+  .settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;}
+  .setting-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:16px 18px;}
+  .setting-card h3{margin:0 0 4px;font-size:14px;}
+  .setting-card p.desc{font-size:11.5px;color:var(--muted);margin:0 0 12px;}
+  .setting-card table{width:100%;border-collapse:collapse;font-size:12.5px;margin-bottom:10px;}
+  .setting-card table td,.setting-card table th{padding:6px 4px;border-bottom:1px solid var(--line);}
+  .mini-row{display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;}
+  .mini-row input{flex:1;min-width:70px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;font-size:12.5px;}
+  .price-field{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:13px;}
+  .price-field input{width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:6px;text-align:right;}
+  @media (max-width:900px){ .settings-grid{grid-template-columns:1fr;} }
+
+  /* print */
+  #printArea{display:none;}
+  @media print{
+    body *{visibility:hidden;}
+    #printArea, #printArea *{visibility:visible;}
+    #printArea{display:block !important;position:absolute;top:0;left:0;width:100%;padding:16px;}
+    .no-print{display:none !important;}
+  }
+  .print-ledger-table{width:100%;border-collapse:collapse;font-size:11px;}
+  .print-ledger-table th,.print-ledger-table td{border:1px solid #999;padding:4px 6px;text-align:left;}
+  .print-slip{border:2px dashed #888;border-radius:10px;padding:18px 22px;max-width:480px;font-size:13px;}
+  .print-slip h2{margin:0 0 10px;font-size:18px;}
+  .print-slip .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted #ccc;}
+  .print-slip .row.total{font-weight:700;font-size:15px;border-bottom:none;margin-top:6px;}
+
+  @media (max-width:720px){
+    .topbar{flex-direction:column;align-items:flex-start;}
+    .date-nav{width:100%;}
+    .field-row{flex-direction:column;}
+    .table-grid{grid-template-columns:repeat(4,1fr);}
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <div class="hidden" id="setupBanner" style="background:#fbf1e8;border:1px solid #ecd9bf;border-radius:10px;padding:14px 16px;margin-bottom:14px;font-size:13px;line-height:1.7;">
+    <b>⚙ 初回設定：データの保存先（Google Apps Script）のURLを入力してください</b>
+    <p style="margin:6px 0;color:var(--muted);">スプレッドシートとGASを使った保存先を用意したら、発行されたウェブアプリのURLをここに貼り付けてください。設定はこの端末のブラウザに保存されます（端末ごとに1回設定が必要です）。</p>
+    <div class="mini-row">
+      <input type="text" id="setupGasUrl" placeholder="https://script.google.com/macros/s/.../exec" style="flex:3;">
+      <button class="secondary-btn" id="setupTestBtn">接続テスト</button>
+      <button class="primary-btn" id="setupSaveBtn">保存して使い始める</button>
+    </div>
+    <div class="hint" id="setupResult"></div>
+  </div>
+
+  <div class="hidden" id="connectionErrorBanner" style="background:#f3d4d4;border:1px solid var(--danger);color:var(--danger);border-radius:10px;padding:12px 16px;margin-bottom:14px;font-size:13px;line-height:1.7;">
+    ⚠ サーバー（GAS）に接続できません。ネットワーク状況か、設定タブの接続設定のURLをご確認ください。
+  </div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark">🔥</span>
+      <div>
+        <h1>BBQ場 予約管理</h1>
+        <p class="sub">電話・お問い合わせフォームの予約をまとめて管理</p>
+      </div>
+    </div>
+    <div class="topbar-right">
+      <div class="view-toggle">
+        <button class="toggle-btn active" data-view="timeline">タイムライン</button>
+        <button class="toggle-btn" data-view="ledger">📋 日別台帳</button>
+        <button class="toggle-btn" data-view="list">一覧・検索</button>
+        <button class="toggle-btn" data-view="sales">💰 売上</button>
+        <button class="toggle-btn" data-view="settings">⚙ 設定</button>
+      </div>
+      <button class="ghost-btn" id="refreshBtn">⟳ 更新</button>
+      <span class="updated-at" id="updatedAt"></span>
+    </div>
+  </header>
+
+  <section class="view" id="timelineView">
+    <div class="date-nav">
+      <button class="nav-btn" id="prevDate">‹ 前の営業日</button>
+      <div class="date-display">
+        <input type="date" id="datePicker">
+        <span class="wd" id="dateWeekday"></span>
+        <span class="irregular-tag hidden" id="irregularTag">臨時営業</span>
+      </div>
+      <button class="nav-btn" id="nextDate">次の営業日 ›</button>
+      <label class="check-inline"><input type="checkbox" id="showCancelledChk"> キャンセル済みも表示</label>
+      <div class="spacer"></div>
+      <button class="secondary-btn" id="printLedgerBtn">🖨 台帳を印刷</button>
+      <button class="primary-btn" id="addResBtn">＋ 予約を追加</button>
+    </div>
+    <div class="day-summary" id="daySummary"></div>
+    <div class="hidden" id="unassignedPanel" style="background:#fbf1e8;border:1px solid #ecd9bf;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;"></div>
+    <div class="timeline-wrap">
+      <div class="timeline-scroll" id="timelineScroll"></div>
+    </div>
+  </section>
+
+  <section class="view hidden" id="listView">
+    <div class="search-bar">
+      <input type="text" id="searchInput" placeholder="名前・フリガナ・電話番号で検索（全期間）">
+      <button class="primary-btn" id="addResBtn2">＋ 予約を追加</button>
+    </div>
+    <table class="res-table">
+      <thead>
+        <tr>
+          <th>日付</th><th>時間</th><th>卓</th><th>大/小/未</th><th>名前</th><th>連絡先</th><th>経由</th><th>オプション</th><th>金額</th><th>担当</th><th>来場</th><th>状態</th><th></th>
+        </tr>
+      </thead>
+      <tbody id="resTableBody"></tbody>
+    </table>
+  </section>
+
+  <section class="view hidden" id="ledgerView">
+    <div class="date-nav">
+      <button class="nav-btn" id="prevDateLedger">‹ 前の営業日</button>
+      <div class="date-display">
+        <input type="date" id="datePickerLedger">
+        <span class="wd" id="dateWeekdayLedger"></span>
+      </div>
+      <button class="nav-btn" id="nextDateLedger">次の営業日 ›</button>
+      <div class="spacer"></div>
+      <button class="secondary-btn" id="printLedgerBtn2">🖨 台帳を印刷</button>
+      <button class="warn-btn" id="printAllSlipsBtn">🖨 この日の予約をまとめて印刷</button>
+    </div>
+    <div class="day-summary" id="ledgerDaySummary"></div>
+    <div class="hidden" id="foodOrderPanel" style="background:#eef3ea;border:1px solid #cfe0c8;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;"></div>
+    <div class="timeline-wrap" style="overflow:auto;">
+      <table class="res-table" id="ledgerTable">
+        <thead>
+          <tr><th>卓</th><th>時間</th><th>名前</th><th>大/小/未</th><th>総人数</th><th>連絡先</th><th>経由</th><th>オプション</th><th>金額</th><th>担当</th><th>状態</th><th>要望・メモ</th><th></th></tr>
+        </thead>
+        <tbody id="ledgerTableBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="view hidden" id="salesView">
+    <div class="day-summary" id="salesSummary"></div>
+    <table class="res-table" id="salesTable">
+      <thead>
+        <tr><th>日付</th><th>件数</th><th>来場人数</th><th>利用料</th><th>食材費</th><th>売上小計</th><th>キャンセル料収入</th><th>合計</th></tr>
+      </thead>
+      <tbody id="salesTableBody"></tbody>
+    </table>
+  </section>
+
+  <section class="view hidden" id="settingsView">
+    <div class="settings-grid">
+      <div class="setting-card">
+        <h3>🔌 接続設定（GAS Webアプリ URL）</h3>
+        <p class="desc">この端末で使うデータ保存先のURLです。端末ごとに設定が必要です。</p>
+        <div class="mini-row">
+          <input type="text" id="settingsGasUrl" placeholder="https://script.google.com/macros/s/.../exec" style="flex:3;">
+          <button class="secondary-btn" id="settingsTestBtn">接続テスト</button>
+          <button class="primary-btn" id="settingsSaveUrlBtn">保存</button>
+        </div>
+        <div class="hint" id="settingsUrlResult"></div>
+      </div>
+      <div class="setting-card">
+        <h3>料金設定（人数別単価）</h3>
+        <p class="desc">予約画面の自動計算に使われます。¥0のままだと合計金額も¥0になります。</p>
+        <div class="price-field"><span>大人（高校生以上）</span><input type="number" id="price_adult" min="0"></div>
+        <div class="price-field"><span>小人（小中学生）</span><input type="number" id="price_child" min="0"></div>
+        <div class="price-field"><span>未就学児</span><input type="number" id="price_infant" min="0"></div>
+        <button class="primary-btn" id="savePricingBtn">保存する</button>
+      </div>
+
+      <div class="setting-card">
+        <h3>オプションマスタ</h3>
+        <p class="desc">ここに登録した項目が、予約登録画面の「＋ボタン」候補として表示されます。区分はキャンセル料の計算（食材／利用料）に使われます。</p>
+        <table id="optionCatalogTable"></table>
+        <div class="mini-row">
+          <input type="text" id="newOptionName" placeholder="名称（例：飲み放題）">
+          <input type="number" id="newOptionPrice" min="0" placeholder="単価">
+          <select id="newOptionCategory"><option value="food">食材</option><option value="usage">利用料</option></select>
+          <button class="secondary-btn" id="addOptionCatalogBtn">追加</button>
+        </div>
+      </div>
+
+      <div class="setting-card">
+        <h3>担当者リスト</h3>
+        <p class="desc">予約登録画面の「担当」プルダウンに表示されます。</p>
+        <table id="staffListTable"></table>
+        <div class="mini-row">
+          <input type="text" id="newStaffName" placeholder="担当者名">
+          <button class="secondary-btn" id="addStaffBtn">追加</button>
+        </div>
+      </div>
+
+      <div class="setting-card">
+        <h3>キャンセル料ポリシー（食材費）</h3>
+        <p class="desc">来場日までの残り日数に応じた料率（%）。一番厳しい（日数が小さい）当てはまる行が適用され、どの行にも当てはまらないほど早いキャンセルは0%になります。キャンセル料は消費税非課税として計算します。</p>
+        <table id="cancelPolicyFoodTable"></table>
+        <div class="mini-row">
+          <input type="number" id="newCancelFoodDays" min="0" placeholder="◯日前から">
+          <input type="number" id="newCancelFoodPercent" min="0" max="100" placeholder="料率%">
+          <button class="secondary-btn" id="addCancelFoodTierBtn">追加</button>
+        </div>
+      </div>
+
+      <div class="setting-card">
+        <h3>キャンセル料ポリシー（利用料）</h3>
+        <p class="desc">人数料金＋「利用料」区分のオプションが対象です。考え方は食材費の表と同じです。</p>
+        <table id="cancelPolicyUsageTable"></table>
+        <div class="mini-row">
+          <input type="number" id="newCancelUsageDays" min="0" placeholder="◯日前から">
+          <input type="number" id="newCancelUsagePercent" min="0" max="100" placeholder="料率%">
+          <button class="secondary-btn" id="addCancelUsageTierBtn">追加</button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <p class="note-banner">データはGoogleスプレッドシートに保存され、同じ接続設定（URL）を使う人どうしで共有されます。同時に同じ予約を編集すると、ごく稀に後から保存した内容で上書きされる場合があります。混み合う時間は更新ボタンで最新状態をご確認ください。</p>
+</div>
+
+<div class="modal-overlay hidden" id="modalOverlay">
+  <div class="modal">
+    <h2 id="modalTitle">予約を追加</h2>
+    <form id="resForm">
+      <div class="field-row">
+        <div class="field">
+          <label>日付</label>
+          <input type="date" id="f_date" required>
+        </div>
+        <div class="field">
+          <label>開始時刻（15分刻み）</label>
+          <select id="f_start" required></select>
+        </div>
+        <div class="field">
+          <label>利用時間</label>
+          <select id="f_duration" required></select>
+          <div class="hint" id="durationHint"></div>
+        </div>
+      </div>
+      <div class="hidden" id="foodDeadlineWarning" style="background:#fbe3d3;border:1px solid var(--ember);color:var(--ember);border-radius:8px;padding:8px 12px;font-size:12.5px;margin-bottom:12px;"></div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>予約経由</label>
+          <div class="radio-group">
+            <label><input type="radio" name="f_source" value="phone" checked> 📞 電話</label>
+            <label><input type="radio" name="f_source" value="form"> 📝 フォーム</label>
+          </div>
+        </div>
+        <div class="field">
+          <label>担当者</label>
+          <select id="f_staff"></select>
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field hidden" id="kanjiField">
+          <label>お名前（漢字）</label>
+          <input type="text" id="f_nameKanji" placeholder="山田太郎">
+        </div>
+        <div class="field">
+          <label id="kanaLabel">お名前（カタカナ）</label>
+          <input type="text" id="f_nameKana" required placeholder="ヤマダタロウ">
+        </div>
+        <div class="field">
+          <label>連絡先（電話番号）</label>
+          <input type="tel" id="f_phone" placeholder="090-1234-5678">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>大人（高校生以上） <span class="hint" id="priceHintAdult"></span></label>
+          <input type="number" id="f_adult" min="0" value="0">
+        </div>
+        <div class="field">
+          <label>小人（小中学生） <span class="hint" id="priceHintChild"></span></label>
+          <input type="number" id="f_child" min="0" value="0">
+        </div>
+        <div class="field">
+          <label>未就学児 <span class="hint" id="priceHintInfant"></span></label>
+          <input type="number" id="f_infant" min="0" value="0">
+        </div>
+      </div>
+      <div class="hint" id="tableSuggestHint"></div>
+      <div class="hint" id="concurrentBookingHint"></div>
+
+      <div class="field" style="margin-top:12px;">
+        <label>利用テーブル（任意・当日割り振りでも可／複数選択可・●は同じ時間帯に他の予約あり）</label>
+        <div class="table-grid" id="tableGrid"></div>
+      </div>
+
+      <div class="field options-area">
+        <label>オプション</label>
+        <div class="option-presets" id="optionPresets"></div>
+        <div id="optionChips"></div>
+        <div class="custom-option-row">
+          <input type="text" id="customOptionName" placeholder="その他オプション名">
+          <input type="number" id="customOptionPrice" min="0" placeholder="単価" style="max-width:90px;">
+          <input type="number" id="customOptionQty" min="1" value="1" placeholder="数量" style="max-width:70px;">
+          <select id="customOptionCategory" style="max-width:100px;">
+            <option value="food">食材扱い</option>
+            <option value="usage">利用料扱い</option>
+          </select>
+          <button type="button" class="secondary-btn" id="addCustomOption">追加</button>
+        </div>
+      </div>
+
+      <div class="field">
+        <div class="fee-box" id="feeBox"></div>
+      </div>
+
+      <div class="field">
+        <label>ご要望・メモ</label>
+        <textarea id="f_notes" placeholder="アレルギー、駐車場、ラジカセ使用など"></textarea>
+      </div>
+
+      <div class="field">
+        <label class="check-inline"><input type="checkbox" id="f_arrived"> 来場済み（当日、来場後にチェック）</label>
+      </div>
+
+      <div class="cancel-section hidden" id="cancelSection"></div>
+
+      <div class="modal-actions">
+        <div class="left">
+          <button type="button" class="danger-btn hidden" id="deleteBtn">削除</button>
+          <button type="button" class="warn-btn hidden" id="printSlipBtn">🖨 印刷</button>
+        </div>
+        <div class="left">
+          <button type="button" class="secondary-btn" id="cancelBtn">閉じる</button>
+          <button type="submit" class="primary-btn">保存する</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="toast hidden" id="toast"></div>
+<div id="printArea"></div>
+
+<script>
+/* ===================== 設定値 ===================== */
+const TABLE_COUNT = 20;
+const OPERATING_DATES = [
+  "2026-07-04","2026-07-05","2026-07-11","2026-07-12","2026-07-18","2026-07-19","2026-07-20",
+  "2026-07-25","2026-07-26","2026-08-01","2026-08-02","2026-08-08","2026-08-09","2026-08-10",
+  "2026-08-11","2026-08-12","2026-08-13","2026-08-14","2026-08-15","2026-08-16","2026-08-22",
+  "2026-08-23","2026-08-29","2026-08-30","2026-09-05","2026-09-06","2026-09-12","2026-09-13",
+  "2026-09-19","2026-09-20","2026-09-21","2026-09-22","2026-09-23","2026-09-26","2026-09-27"
+];
+const HOLIDAYS = {
+  "2026-07-20":"海の日","2026-08-11":"山の日","2026-09-21":"敬老の日",
+  "2026-09-22":"国民の休日","2026-09-23":"秋分の日"
+};
+const WD_JA = ["日","月","火","水","木","金","土"];
+const LUNCH_START = 11*60, LUNCH_END = 16*60;
+const DINNER_START = 17*60, DINNER_END = 21*60;
+const DAY_START_MIN = LUNCH_START, DAY_END_MIN = DINNER_END;
+const TIME_STEP = 15;
+const DURATION_CHOICES = [60,90,120,150,180];
+const PALETTE = [
+  "#f7d9c4","#cfe3d4","#d8e0ef","#f3dce6","#e9e2c5","#cfe7e6","#f0d4d4","#dcdcef",
+  "#e2ecd2","#f4e3c7","#d3e3df","#ece0ef"
+];
+const DEFAULT_OPTION_CATALOG = [
+  {id:"o1",label:"食材セット",price:0,category:"food"},
+  {id:"o2",label:"飲み放題",price:0,category:"food"},
+  {id:"o3",label:"ソフトドリンク",price:0,category:"food"},
+  {id:"o4",label:"アルコール",price:0,category:"food"},
+  {id:"o5",label:"飲み物持込可",price:0,category:"food"}
+];
+const DEFAULT_CANCEL_POLICY_FOOD = [ {daysBefore:3, feePercent:100} ];
+const DEFAULT_CANCEL_POLICY_USAGE = [ {daysBefore:1, feePercent:50}, {daysBefore:0, feePercent:100} ];
+const FOOD_DEADLINE_DAYS = 4;
+const FOOD_DEADLINE_HOUR = 16;
+
+let state = {
+  view: "timeline",
+  currentDate: pickDefaultDate(),
+  cache: {},
+  allLoaded: false,
+  allCache: [],
+  editingId: null,
+  editingOriginal: null,
+  selectedTables: new Set(),
+  bookingOptions: [],
+  showCancelled: false,
+  settings: {
+    pricing:{adult:0,child:0,infant:0},
+    optionCatalog: DEFAULT_OPTION_CATALOG.slice(),
+    staffList:[],
+    cancelPolicyFood: DEFAULT_CANCEL_POLICY_FOOD.slice(),
+    cancelPolicyUsage: DEFAULT_CANCEL_POLICY_USAGE.slice()
+  },
+  settingsLoaded: false
+};
+
+/* ===================== ユーティリティ ===================== */
+function pickDefaultDate(){
+  const today = toISODate(new Date());
+  if (OPERATING_DATES.includes(today)) return today;
+  const upcoming = OPERATING_DATES.find(d => d >= today);
+  return upcoming || OPERATING_DATES[0];
+}
+function toISODate(d){
+  const y=d.getFullYear(), m=String(d.getMonth()+1).padStart(2,"0"), day=String(d.getDate()).padStart(2,"0");
+  return `${y}-${m}-${day}`;
+}
+function minToHHMM(min){
+  const h=Math.floor(min/60), m=min%60;
+  return `${String(h).padStart(2,"0")}:${String(m).padStart(2,"0")}`;
+}
+function hhmmToMin(s){
+  const parts = s.split(":").map(Number);
+  return parts[0]*60+parts[1];
+}
+function fmtDuration(min){
+  const h=Math.floor(min/60), m=min%60;
+  if (h===0) return `${m}分`;
+  return m? `${h}時間${m}分` : `${h}時間`;
+}
+function fmtYen(n){
+  return "¥" + Math.round(n||0).toLocaleString("ja-JP");
+}
+function weekdayLabel(dateStr){
+  const d = new Date(dateStr+"T00:00:00");
+  const wd = WD_JA[d.getDay()];
+  const hol = HOLIDAYS[dateStr];
+  return hol ? `${wd}（${hol}）` : wd;
+}
+function fmtDateJP(dateStr){
+  const parts = dateStr.split("-").map(Number);
+  return `${parts[1]}月${parts[2]}日`;
+}
+function hashColor(id){
+  let h=0;
+  for(let i=0;i<id.length;i++){ h = (h*31 + id.charCodeAt(i)) >>> 0; }
+  return PALETTE[h % PALETTE.length];
+}
+function escapeHtml(s){
+  return String(s||"").replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+function displayName(r){
+  return r.nameKanji ? r.nameKanji : r.nameKana;
+}
+function tablesLabel(r){
+  if (r.tables && r.tables.length>0) return r.tables.map(t=>"卓"+t).join("・");
+  const ppl = r.counts ? (r.counts.adult+r.counts.child+r.counts.infant) : 0;
+  const suggest = Math.max(1, Math.ceil(ppl/4));
+  return `未割当(目安${suggest}卓)`;
+}
+function daysBetween(dateStrA, dateStrB){
+  const a = dateStrA.split("-").map(Number);
+  const b = dateStrB.split("-").map(Number);
+  const ua = Date.UTC(a[0],a[1]-1,a[2]);
+  const ub = Date.UTC(b[0],b[1]-1,b[2]);
+  return Math.round((ub-ua)/86400000);
+}
+function foodOrderDeadline(dateStr){
+  const parts = dateStr.split("-").map(Number);
+  const dt = new Date(parts[0], parts[1]-1, parts[2], FOOD_DEADLINE_HOUR, 0, 0);
+  dt.setDate(dt.getDate() - FOOD_DEADLINE_DAYS);
+  return dt;
+}
+function isFoodDeadlinePassed(dateStr){
+  return new Date() > foodOrderDeadline(dateStr);
+}
+function fmtDeadline(dateStr){
+  const dt = foodOrderDeadline(dateStr);
+  return `${dt.getMonth()+1}/${dt.getDate()} ${String(dt.getHours()).padStart(2,"0")}:${String(dt.getMinutes()).padStart(2,"0")}`;
+}
+
+/* ===================== 接続設定（GAS Webアプリ URL） ===================== */
+const GAS_URL_KEY = "bbq_gas_url";
+function getGasUrl(){
+  try{ return localStorage.getItem(GAS_URL_KEY) || ""; }catch(e){ return ""; }
+}
+function setGasUrl(url){
+  try{ localStorage.setItem(GAS_URL_KEY, url); }catch(e){}
+}
+async function pingGas(url){
+  const u = new URL(url);
+  u.searchParams.set("action","ping");
+  const res = await fetch(u.toString());
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error||"ping failed");
+  return json;
+}
+async function apiGet(action, params){
+  const base = getGasUrl();
+  if (!base) throw new Error("GAS_URL_NOT_SET");
+  const u = new URL(base);
+  u.searchParams.set("action", action);
+  Object.keys(params||{}).forEach(k=> u.searchParams.set(k, params[k]));
+  const res = await fetch(u.toString());
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error||"API error");
+  document.getElementById("connectionErrorBanner").classList.add("hidden");
+  return json.data;
+}
+async function apiPost(action, payload){
+  const base = getGasUrl();
+  if (!base) throw new Error("GAS_URL_NOT_SET");
+  const res = await fetch(base, {
+    method: "POST",
+    headers: {"Content-Type":"text/plain;charset=utf-8"},
+    body: JSON.stringify(Object.assign({action}, payload))
+  });
+  const json = await res.json();
+  if (!json.ok) throw new Error(json.error||"API error");
+  document.getElementById("connectionErrorBanner").classList.add("hidden");
+  return json.data;
+}
+
+/* ===================== ストレージ（GAS経由） ===================== */
+async function loadDateReservations(date){
+  if (state.cache[date]) return state.cache[date];
+  try{
+    const data = await apiGet("listReservations", {date});
+    state.cache[date] = data;
+    return data;
+  }catch(e){
+    handleApiError(e);
+    return state.cache[date] || [];
+  }
+}
+async function saveReservationRecord(record){
+  await apiPost("saveReservation", {data: record});
+  state.cache = {}; // 日付をまたぐ変更もあるため全キャッシュを無効化
+  state.allLoaded = false;
+}
+async function deleteReservationRecord(id){
+  await apiPost("deleteReservation", {id});
+  state.cache = {};
+  state.allLoaded = false;
+}
+async function ensureAllLoaded(){
+  try{
+    const data = await apiGet("listAllReservations", {});
+    data.sort((a,b)=> (a.date+a.start).localeCompare(b.date+b.start));
+    state.allCache = data;
+    state.allLoaded = true;
+  }catch(e){
+    handleApiError(e);
+  }
+}
+function combinedDateList(){
+  const set = new Set(OPERATING_DATES);
+  state.allCache.forEach(r=> set.add(r.date));
+  return Array.from(set).sort();
+}
+async function loadSettings(){
+  try{
+    const data = await apiGet("getSettings", {});
+    state.settings.pricing = data.pricing || {adult:0,child:0,infant:0};
+    const catalog = data.optionCatalog || DEFAULT_OPTION_CATALOG;
+    state.settings.optionCatalog = catalog.map(o => ({ ...o, category: o.category || "food" }));
+    state.settings.staffList = data.staffList || [];
+    state.settings.cancelPolicyFood = data.cancelPolicyFood || DEFAULT_CANCEL_POLICY_FOOD;
+    state.settings.cancelPolicyUsage = data.cancelPolicyUsage || DEFAULT_CANCEL_POLICY_USAGE;
+  }catch(e){
+    handleApiError(e);
+  }
+  state.settingsLoaded = true;
+}
+async function saveSettingKey(key, value){
+  await apiPost("saveSetting", {key, value});
+}
+function handleApiError(e){
+  if (String(e.message) === "GAS_URL_NOT_SET"){
+    document.getElementById("setupBanner").classList.remove("hidden");
+  } else {
+    document.getElementById("connectionErrorBanner").classList.remove("hidden");
+  }
+}
+
+/* ===================== 料金・人数計算 ===================== */
+function readCounts(){
+  return {
+    adult: Number(document.getElementById("f_adult").value)||0,
+    child: Number(document.getElementById("f_child").value)||0,
+    infant: Number(document.getElementById("f_infant").value)||0
+  };
+}
+function computeFeeFromForm(){
+  const c = readCounts();
+  const p = state.settings.pricing;
+  const peopleFee = c.adult*(p.adult||0) + c.child*(p.child||0) + c.infant*(p.infant||0);
+  const foodOptFee = state.bookingOptions.filter(o=>o.category!=="usage").reduce((s,o)=>s+(Number(o.price)||0)*(Number(o.qty)||0),0);
+  const usageOptFee = state.bookingOptions.filter(o=>o.category==="usage").reduce((s,o)=>s+(Number(o.price)||0)*(Number(o.qty)||0),0);
+  const optFee = foodOptFee + usageOptFee;
+  const total = peopleFee + optFee;
+  const usageSubtotal = peopleFee + usageOptFee;
+  const foodSubtotal = foodOptFee;
+  const totalPeople = c.adult+c.child+c.infant;
+  const suggestedTables = Math.max(1, Math.ceil(totalPeople/4));
+  return {counts:c, peopleFee, optFee, total, totalPeople, suggestedTables, usageSubtotal, foodSubtotal};
+}
+function updatePriceHints(){
+  const p = state.settings.pricing;
+  document.getElementById("priceHintAdult").textContent = `(${fmtYen(p.adult)}/名)`;
+  document.getElementById("priceHintChild").textContent = `(${fmtYen(p.child)}/名)`;
+  document.getElementById("priceHintInfant").textContent = `(${fmtYen(p.infant)}/名)`;
+}
+function updateFeeAndSuggestion(){
+  updatePriceHints();
+  const f = computeFeeFromForm();
+  const hint = document.getElementById("tableSuggestHint");
+  hint.textContent = `合計 ${f.totalPeople}名 ／ テーブル目安：${f.suggestedTables}卓（1卓4〜6名で調整可・未就学児を含む人数で計算）`;
+  const box = document.getElementById("feeBox");
+  let zeroNote = (state.settings.pricing.adult===0 && state.settings.pricing.child===0 && state.settings.pricing.infant===0)
+    ? `<div class="hint">※人数料金が¥0の場合は「設定」タブで単価を入力してください。</div>` : "";
+  box.innerHTML = `
+    <div class="row"><span>人数料金（利用料）</span><span>${fmtYen(f.peopleFee)}</span></div>
+    <div class="row"><span>オプション料金</span><span>${fmtYen(f.optFee)}</span></div>
+    <div class="row total"><span>合計金額</span><span>${fmtYen(f.total)}</span></div>
+    ${zeroNote}
+  `;
+  return f;
+}
+
+/* ===================== レンダリング：タイムライン ===================== */
+async function renderTimeline(){
+  document.getElementById("datePicker").value = state.currentDate;
+  document.getElementById("dateWeekday").textContent = weekdayLabel(state.currentDate);
+  document.getElementById("irregularTag").classList.toggle("hidden", OPERATING_DATES.includes(state.currentDate));
+
+  const fullList = await loadDateReservations(state.currentDate);
+  const list = state.showCancelled ? fullList : fullList.filter(r=>r.status!=="cancelled");
+  renderDaySummary(fullList);
+  renderUnassignedPanel(fullList);
+
+  const totalMin = DAY_END_MIN - DAY_START_MIN;
+  const hourCount = totalMin/60;
+
+  let axisTicks = "";
+  for(let i=0;i<=hourCount;i++){
+    const left = (i*60/totalMin)*100;
+    const label = minToHHMM(DAY_START_MIN + i*60);
+    axisTicks += `<div class="axis-tick" style="left:${left}%">${label}</div>`;
+  }
+  const gapLeft = ((LUNCH_END-DAY_START_MIN)/totalMin)*100;
+  const gapWidth = ((DINNER_START-LUNCH_END)/totalMin)*100;
+  const gapHtml = `<div class="axis-gap" style="left:${gapLeft}%;width:${gapWidth}%"></div>`;
+
+  const isToday = state.currentDate === toISODate(new Date());
+  let nowLeft = null;
+  if (isToday){
+    const now = new Date();
+    const nowMin = now.getHours()*60+now.getMinutes();
+    if (nowMin>=DAY_START_MIN && nowMin<=DAY_END_MIN){
+      nowLeft = ((nowMin-DAY_START_MIN)/totalMin)*100;
+    }
+  }
+
+  let rows = "";
+  for(let t=1;t<=TABLE_COUNT;t++){
+    const blocksForTable = list.filter(r => r.tables.includes(t));
+    let blocksHtml = "";
+    blocksForTable.forEach(r=>{
+      const startMin = hhmmToMin(r.start);
+      const dur = r.durationMin || 180;
+      const left = ((startMin - DAY_START_MIN)/totalMin)*100;
+      const width = (dur/totalMin)*100;
+      const endLabel = minToHHMM(startMin+dur);
+      const srcIcon = r.source === "phone" ? "📞" : "📝";
+      const optsText = (r.options||[]).map(o=>`${o.label}×${o.qty}`).join(" / ");
+      const isCancelled = r.status === "cancelled";
+      blocksHtml += `<div class="res-block ${r.arrived?'arrived':''} ${isCancelled?'cancelled':''}" style="left:${left}%;width:${width}%;background:${hashColor(r.id)}" data-id="${r.id}" title="${escapeHtml(displayName(r))} ${r.start}-${endLabel}">
+        <div class="rb-name">${srcIcon} ${escapeHtml(displayName(r))}${r.arrived?' ✓':''}${isCancelled?' (キャンセル)':''}</div>
+        <div class="rb-meta">${r.start}-${endLabel}・${(r.counts?(r.counts.adult+r.counts.child+r.counts.infant):0)}名${optsText?(' ・'+escapeHtml(optsText)):''}</div>
+      </div>`;
+    });
+    const nowLineHtml = nowLeft!==null ? `<div class="now-line" style="left:${nowLeft}%"></div>` : "";
+
+    rows += `
+      <div class="row-label">卓${t}<small>4名用</small></div>
+      <div class="row-track">${gapHtml}${nowLineHtml}${blocksHtml}</div>
+    `;
+  }
+
+  const grid = document.getElementById("timelineScroll");
+  grid.innerHTML = `
+    <div class="timeline-grid">
+      <div class="axis-corner"></div>
+      <div class="axis-track">${axisTicks}</div>
+      ${rows}
+    </div>
+  `;
+
+  grid.querySelectorAll(".res-block").forEach(el=>{
+    el.addEventListener("click", ()=> openEditModal(el.dataset.id, state.currentDate));
+  });
+}
+
+function renderDaySummary(fullList){
+  const active = fullList.filter(r=>r.status!=="cancelled");
+  const total = active.length;
+  const arrived = active.filter(r=>r.arrived).length;
+  const cancelledCount = fullList.length - active.length;
+  const usedTables = new Set();
+  active.forEach(r=> r.tables.forEach(t=>usedTables.add(t)));
+  const revenue = active.reduce((s,r)=>s+(r.totalAmount||0),0);
+  const deadlineChip = isFoodDeadlinePassed(state.currentDate)
+    ? `<span style="color:var(--ember);font-weight:700;">⚠ 食材注文期限超過（${fmtDeadline(state.currentDate)}まで）</span>` : "";
+  const el = document.getElementById("daySummary");
+  el.innerHTML = `
+    <span><b>${fmtDateJP(state.currentDate)}</b>${weekdayLabel(state.currentDate)}</span>
+    <span>予約 <b>${total}</b>件</span>
+    <span>来場済み <b>${arrived}</b>件</span>
+    <span>利用テーブル <b>${usedTables.size}</b>/${TABLE_COUNT}卓</span>
+    <span>売上見込 <b>${fmtYen(revenue)}</b></span>
+    <span>キャンセル <b>${cancelledCount}</b>件</span>
+    ${deadlineChip}
+  `;
+}
+function renderUnassignedPanel(fullList){
+  const panel = document.getElementById("unassignedPanel");
+  const unassigned = fullList.filter(r=> r.status!=="cancelled" && (!r.tables || r.tables.length===0));
+  if (unassigned.length === 0){ panel.classList.add("hidden"); panel.innerHTML=""; return; }
+  panel.classList.remove("hidden");
+  const items = unassigned.slice().sort((a,b)=>a.start.localeCompare(b.start)).map(r=>{
+    const ppl = r.counts ? (r.counts.adult+r.counts.child+r.counts.infant) : 0;
+    const suggest = Math.max(1, Math.ceil(ppl/4));
+    return `<span class="tag" style="cursor:pointer;" data-unassigned-edit="${r.id}">${r.start} ${escapeHtml(displayName(r))}（${ppl}名・目安${suggest}卓）→卓を割り当てる</span>`;
+  }).join(" ");
+  panel.innerHTML = `<b>⚠ 卓が未割当の予約（${unassigned.length}件・当日割り振り予定）：</b><br>${items}`;
+  panel.querySelectorAll("[data-unassigned-edit]").forEach(el=>{
+    el.addEventListener("click", ()=> openEditModal(el.dataset.unassignedEdit, state.currentDate));
+  });
+}
+
+/* ===================== レンダリング：一覧・検索 ===================== */
+function renderList(){
+  const q = document.getElementById("searchInput").value.trim();
+  const norm = s => String(s||"").replace(/[-\s]/g,"");
+  const qn = norm(q);
+  const rows = state.allCache.filter(r=>{
+    if (!q) return true;
+    return norm(r.nameKana).includes(qn) || norm(r.nameKanji).includes(qn) || norm(r.phone).includes(qn);
+  });
+
+  const body = document.getElementById("resTableBody");
+  if (rows.length === 0){
+    body.innerHTML = `<tr><td colspan="13"><div class="empty-state">${q?"該当する予約が見つかりません。":"まだ予約がありません。「＋予約を追加」から登録してください。"}</div></td></tr>`;
+    return;
+  }
+  body.innerHTML = rows.map(r=>{
+    const dur = r.durationMin||180;
+    const endLabel = minToHHMM(hhmmToMin(r.start)+dur);
+    const optsText = (r.options||[]).map(o=>`<span class="tag">${escapeHtml(o.label)}×${o.qty}</span>`).join("");
+    const c = r.counts||{adult:0,child:0,infant:0};
+    const isCancelled = r.status==="cancelled";
+    return `<tr class="${isCancelled?'is-cancelled':''}">
+      <td>${fmtDateJP(r.date)}（${weekdayLabel(r.date).slice(0,1)}）</td>
+      <td>${r.start}-${endLabel}</td>
+      <td>${tablesLabel(r)}</td>
+      <td>${c.adult}/${c.child}/${c.infant}</td>
+      <td>${escapeHtml(displayName(r))}${r.nameKanji?(' <span style="color:var(--muted)">('+escapeHtml(r.nameKana)+')</span>'):''}</td>
+      <td>${escapeHtml(r.phone||"")}</td>
+      <td><span class="src-tag ${r.source}">${r.source==="phone"?"📞電話":"📝フォーム"}</span></td>
+      <td>${optsText}</td>
+      <td>${fmtYen(r.totalAmount)}</td>
+      <td>${escapeHtml(r.staff||"")}</td>
+      <td><span class="arrived-chip ${r.arrived?'yes':'no'}" data-id="${r.id}" data-date="${r.date}">${r.arrived?"来場済":"未来場"}</span></td>
+      <td><span class="status-tag ${isCancelled?'cancelled':'active'}">${isCancelled?("キャンセル "+(r.cancelFeeAmount!=null?fmtYen(r.cancelFeeAmount)+"(非課税)":"")):"通常"}</span></td>
+      <td class="row-actions"><button class="icon-btn" data-edit="${r.id}" data-date="${r.date}">編集</button></td>
+    </tr>`;
+  }).join("");
+
+  body.querySelectorAll(".arrived-chip").forEach(chip=>{
+    chip.addEventListener("click", async ()=>{
+      const id = chip.dataset.id, date = chip.dataset.date;
+      const list = await loadDateReservations(date);
+      const target = list.find(r=>r.id===id);
+      if (!target) return;
+      target.arrived = !target.arrived;
+      target.updatedAt = new Date().toISOString();
+      try{
+        await saveReservationRecord(target);
+      }catch(e){ handleApiError(e); showToast("⚠ 更新に失敗しました"); return; }
+      await ensureAllLoaded();
+      renderList();
+      showToast(target.arrived ? "来場済みにしました" : "未来場に戻しました");
+    });
+  });
+  body.querySelectorAll("[data-edit]").forEach(btn=>{
+    btn.addEventListener("click", ()=> openEditModal(btn.dataset.edit, btn.dataset.date));
+  });
+}
+
+/* ===================== レンダリング：設定 ===================== */
+function renderSettings(){
+  document.getElementById("price_adult").value = state.settings.pricing.adult;
+  document.getElementById("price_child").value = state.settings.pricing.child;
+  document.getElementById("price_infant").value = state.settings.pricing.infant;
+
+  const optTable = document.getElementById("optionCatalogTable");
+  optTable.innerHTML = `<tr><th>名称</th><th>単価</th><th>区分</th><th></th></tr>` +
+    state.settings.optionCatalog.map((o,i)=>`<tr>
+      <td>${escapeHtml(o.label)}</td><td>${fmtYen(o.price)}</td>
+      <td><select data-cat-opt="${i}"><option value="food" ${o.category!=="usage"?"selected":""}>食材</option><option value="usage" ${o.category==="usage"?"selected":""}>利用料</option></select></td>
+      <td><button class="icon-btn" data-del-opt="${i}">削除</button></td>
+    </tr>`).join("");
+  optTable.querySelectorAll("[data-cat-opt]").forEach(sel=>{
+    sel.addEventListener("change", async ()=>{
+      state.settings.optionCatalog[Number(sel.dataset.catOpt)].category = sel.value;
+      await saveSettingKey("optionCatalog", state.settings.optionCatalog);
+      showToast("区分を更新しました");
+    });
+  });
+  optTable.querySelectorAll("[data-del-opt]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      state.settings.optionCatalog.splice(Number(btn.dataset.delOpt),1);
+      await saveSettingKey("optionCatalog", state.settings.optionCatalog);
+      renderSettings();
+      showToast("削除しました");
+    });
+  });
+
+  const staffTable = document.getElementById("staffListTable");
+  staffTable.innerHTML = `<tr><th>担当者名</th><th></th></tr>` +
+    state.settings.staffList.map((s,i)=>`<tr><td>${escapeHtml(s)}</td><td><button class="icon-btn" data-del-staff="${i}">削除</button></td></tr>`).join("");
+  staffTable.querySelectorAll("[data-del-staff]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      state.settings.staffList.splice(Number(btn.dataset.delStaff),1);
+      await saveSettingKey("staffList", state.settings.staffList);
+      renderSettings();
+      showToast("削除しました");
+    });
+  });
+
+  renderCancelPolicyTable("cancelPolicyFoodTable", "cancelPolicyFood", "cancelPolicyFood");
+  renderCancelPolicyTable("cancelPolicyUsageTable", "cancelPolicyUsage", "cancelPolicyUsage");
+}
+function renderCancelPolicyTable(tableId, settingsKey, storageKey){
+  const table = document.getElementById(tableId);
+  const policy = state.settings[settingsKey];
+  const sorted = policy.slice().sort((a,b)=>a.daysBefore-b.daysBefore);
+  table.innerHTML = `<tr><th>◯日前から</th><th>料率</th><th></th></tr>` +
+    sorted.map((t)=>{
+      const realIdx = policy.indexOf(t);
+      return `<tr><td>${t.daysBefore}日前〜</td><td>${t.feePercent}%</td><td><button class="icon-btn" data-del-tier="${realIdx}">削除</button></td></tr>`;
+    }).join("");
+  table.querySelectorAll("[data-del-tier]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      policy.splice(Number(btn.dataset.delTier),1);
+      await saveSettingKey(storageKey, policy);
+      renderSettings();
+      showToast("削除しました");
+    });
+  });
+}
+
+/* ===================== モーダル：入力補助 ===================== */
+function buildStartOptions(){
+  const sel = document.getElementById("f_start");
+  let lunch = "", dinner = "";
+  for(let m=LUNCH_START; m<LUNCH_END; m+=TIME_STEP){ lunch += `<option value="${minToHHMM(m)}">${minToHHMM(m)}</option>`; }
+  for(let m=DINNER_START; m<DINNER_END; m+=TIME_STEP){ dinner += `<option value="${minToHHMM(m)}">${minToHHMM(m)}</option>`; }
+  sel.innerHTML = `<optgroup label="昼営業(11:00-16:00)">${lunch}</optgroup><optgroup label="夜営業(17:00-21:00)">${dinner}</optgroup>`;
+}
+function buildDurationOptions(){
+  const startMin = hhmmToMin(document.getElementById("f_start").value);
+  const windowEnd = startMin < LUNCH_END ? LUNCH_END : DINNER_END;
+  const maxDur = windowEnd - startMin;
+  let opts = DURATION_CHOICES.filter(d=>d<=maxDur);
+  if (opts.length===0) opts = [Math.max(15,maxDur)];
+  const sel = document.getElementById("f_duration");
+  const prev = Number(sel.value);
+  sel.innerHTML = opts.map(d=>`<option value="${d}">${fmtDuration(d)}</option>`).join("");
+  sel.value = opts.includes(prev) ? String(prev) : String(opts[opts.length-1]);
+  updateDurationHint();
+}
+function updateDurationHint(){
+  const sel = document.getElementById("f_duration");
+  const dur = Number(sel.value)||0;
+  const hint = document.getElementById("durationHint");
+  if (dur < 180){
+    hint.textContent = `⚠ 3時間未満のご利用です（${fmtDuration(dur)}）。閉店時刻の関係で3時間を選べない場合は自動でこの時間になっています。`;
+    hint.style.color = "var(--ember)";
+  } else {
+    hint.textContent = "";
+  }
+}
+function buildStaffOptions(){
+  const sel = document.getElementById("f_staff");
+  const prev = sel.value;
+  const list = state.settings.staffList;
+  sel.innerHTML = `<option value="">未選択</option>` + list.map(s=>`<option value="${escapeHtml(s)}">${escapeHtml(s)}</option>`).join("");
+  if (list.includes(prev)) sel.value = prev;
+}
+function updateFoodDeadlineWarning(){
+  const dateVal = document.getElementById("f_date").value;
+  const banner = document.getElementById("foodDeadlineWarning");
+  if (dateVal && isFoodDeadlinePassed(dateVal)){
+    banner.textContent = `⚠ 食材注文期限（来場日の${FOOD_DEADLINE_DAYS}日前${FOOD_DEADLINE_HOUR}:00＝${fmtDeadline(dateVal)}）を過ぎています。食材の追加・変更がある場合は手配状況を確認してください。`;
+    banner.classList.remove("hidden");
+  } else {
+    banner.classList.add("hidden");
+  }
+}
+function toggleNameFieldsBySource(){
+  const source = document.querySelector('input[name="f_source"]:checked').value;
+  const kanjiField = document.getElementById("kanjiField");
+  const kanaLabel = document.getElementById("kanaLabel");
+  if (source === "form"){
+    kanjiField.classList.remove("hidden");
+    kanaLabel.textContent = "フリガナ（カタカナ）";
+  } else {
+    kanjiField.classList.add("hidden");
+    document.getElementById("f_nameKanji").value = "";
+    kanaLabel.textContent = "お名前（カタカナ）";
+  }
+}
+function buildOptionPresets(){
+  const wrap = document.getElementById("optionPresets");
+  const catLabel = c => c==="usage" ? "利用料" : "食材";
+  wrap.innerHTML = state.settings.optionCatalog.map(o=>`<button type="button" class="preset-btn" data-preset-label="${escapeHtml(o.label)}" data-preset-price="${o.price}" data-preset-category="${o.category||'food'}">+ ${escapeHtml(o.label)}（${fmtYen(o.price)}・${catLabel(o.category)}）</button>`).join("");
+  wrap.querySelectorAll("[data-preset-label]").forEach(btn=>{
+    btn.addEventListener("click", ()=> addOption(btn.dataset.presetLabel, 1, Number(btn.dataset.presetPrice)||0, btn.dataset.presetCategory||"food"));
+  });
+}
+function addOption(label, qty, price, category){
+  const existing = state.bookingOptions.find(o=>o.label===label);
+  if (existing){ existing.qty = Number(existing.qty)+Number(qty); }
+  else state.bookingOptions.push({label, qty:Number(qty), price:Number(price)||0, category: category||"food"});
+  renderOptionChips();
+  updateFeeAndSuggestion();
+}
+function renderOptionChips(){
+  const wrap = document.getElementById("optionChips");
+  const catLabel = c => c==="usage" ? "利用料" : "食材";
+  wrap.innerHTML = state.bookingOptions.map((o,i)=>`
+    <span class="option-chip">${escapeHtml(o.label)}（${fmtYen(o.price)}・${catLabel(o.category)}）×
+      <input type="number" min="1" value="${o.qty}" data-idx="${i}">
+      <span class="rm" data-rm="${i}" title="削除">✕</span>
+    </span>
+  `).join("");
+  wrap.querySelectorAll("[data-idx]").forEach(inp=>{
+    inp.addEventListener("change", ()=>{
+      state.bookingOptions[Number(inp.dataset.idx)].qty = Number(inp.value)||1;
+      updateFeeAndSuggestion();
+    });
+  });
+  wrap.querySelectorAll("[data-rm]").forEach(rm=>{
+    rm.addEventListener("click", ()=>{
+      state.bookingOptions.splice(Number(rm.dataset.rm),1);
+      renderOptionChips();
+      updateFeeAndSuggestion();
+    });
+  });
+}
+async function buildTableGrid(){
+  const date = document.getElementById("f_date").value || state.currentDate;
+  const start = document.getElementById("f_start").value;
+  const dur = Number(document.getElementById("f_duration").value)||180;
+  const list = await loadDateReservations(date);
+  const startMin = hhmmToMin(start);
+  const endMin = startMin + dur;
+
+  const busy = new Set();
+  let overlapCount = 0, overlapAssignedTables = 0, overlapUnassignedEstimate = 0;
+  list.forEach(r=>{
+    if (r.id === state.editingId) return;
+    if (r.status === "cancelled") return;
+    const rs = hhmmToMin(r.start), re = rs+(r.durationMin||180);
+    if (rs < endMin && re > startMin){
+      r.tables.forEach(t=>busy.add(t));
+      overlapCount++;
+      if (r.tables.length>0){
+        overlapAssignedTables += r.tables.length;
+      } else {
+        const ppl = r.counts ? (r.counts.adult+r.counts.child+r.counts.infant) : 4;
+        overlapUnassignedEstimate += Math.max(1, Math.ceil(ppl/4));
+      }
+    }
+  });
+  const concurrentHint = document.getElementById("concurrentBookingHint");
+  if (overlapCount > 0){
+    concurrentHint.textContent = `同じ時間帯の予約：${overlapCount}件（割当済み${overlapAssignedTables}卓 ＋ 未割当${overlapUnassignedEstimate}卓目安）→ 概算 ${overlapAssignedTables+overlapUnassignedEstimate}/${TABLE_COUNT}卓`;
+  } else {
+    concurrentHint.textContent = `同じ時間帯の予約：0件`;
+  }
+
+  const wrap = document.getElementById("tableGrid");
+  wrap.innerHTML = "";
+  for(let t=1;t<=TABLE_COUNT;t++){
+    const sel = state.selectedTables.has(t);
+    const isBusy = busy.has(t);
+    const chip = document.createElement("div");
+    chip.className = `table-chip ${sel?"selected":""} ${isBusy?"busy":""}`;
+    chip.textContent = "卓"+t;
+    chip.addEventListener("click", ()=>{
+      if (state.selectedTables.has(t)) state.selectedTables.delete(t);
+      else state.selectedTables.add(t);
+      buildTableGrid();
+    });
+    wrap.appendChild(chip);
+  }
+}
+
+function openModal(){ document.getElementById("modalOverlay").classList.remove("hidden"); }
+function closeModal(){
+  document.getElementById("modalOverlay").classList.add("hidden");
+  const delBtn = document.getElementById("deleteBtn");
+  delBtn.classList.add("hidden"); delBtn.classList.remove("confirming"); delBtn.textContent = "削除";
+}
+
+function lookupTierPercent(policy, daysUntil){
+  const sorted = policy.slice().sort((a,b)=>a.daysBefore-b.daysBefore);
+  for(const tier of sorted){
+    if (daysUntil <= tier.daysBefore) return tier.feePercent;
+  }
+  return 0;
+}
+function renderCancelSection(record){
+  const sec = document.getElementById("cancelSection");
+  if (!state.editingId){ sec.classList.add("hidden"); sec.innerHTML=""; return; }
+  sec.classList.remove("hidden");
+
+  if (record.status === "cancelled"){
+    sec.innerHTML = `
+      <h4>この予約はキャンセル済みです（キャンセル料は消費税非課税）</h4>
+      <div class="hint">キャンセル日: ${record.cancelledAt ? new Date(record.cancelledAt).toLocaleDateString("ja-JP") : "-"}</div>
+      <div class="hint">食材費: ${fmtYen(record.cancelFoodFee)}（${record.cancelFoodPercent}%） ／ 利用料: ${fmtYen(record.cancelUsageFee)}（${record.cancelUsagePercent}%） ／ 合計: ${fmtYen(record.cancelFeeAmount)}</div>
+      <div style="margin-top:8px;"><button type="button" class="secondary-btn" id="restoreBtn">キャンセルを取り消す（通常に戻す）</button></div>
+    `;
+    document.getElementById("restoreBtn").addEventListener("click", handleRestore);
+  } else {
+    sec.innerHTML = `
+      <h4>キャンセル処理</h4>
+      <div id="cancelCalcArea"></div>
+      <div class="mini-row" style="margin-top:8px;">
+        <button type="button" class="warn-btn" id="startCancelBtn">この予約をキャンセル扱いにする</button>
+      </div>
+    `;
+    document.getElementById("startCancelBtn").addEventListener("click", ()=> showCancelCalc(record));
+  }
+}
+function showCancelCalc(record){
+  const today = toISODate(new Date());
+  const daysUntil = daysBetween(today, record.date);
+  const foodPercent = lookupTierPercent(state.settings.cancelPolicyFood, daysUntil);
+  const usagePercent = lookupTierPercent(state.settings.cancelPolicyUsage, daysUntil);
+  const foodSubtotal = record.foodSubtotal || 0;
+  const usageSubtotal = record.usageSubtotal || (record.totalAmount||0);
+  const foodFee = Math.round(foodSubtotal*foodPercent/100);
+  const usageFee = Math.round(usageSubtotal*usagePercent/100);
+  const area = document.getElementById("cancelCalcArea");
+  area.innerHTML = `
+    <div class="hint">来場予定日まで残り${daysUntil}日</div>
+    <div class="price-field"><span>食材費 ${fmtYen(foodSubtotal)} → 料率${foodPercent}%（手動で調整可）</span><input type="number" id="cancelFoodOverride" value="${foodFee}" min="0"></div>
+    <div class="price-field"><span>利用料 ${fmtYen(usageSubtotal)} → 料率${usagePercent}%（手動で調整可）</span><input type="number" id="cancelUsageOverride" value="${usageFee}" min="0"></div>
+    <div class="hint">※キャンセル料は消費税非課税として計算しています。</div>
+    <button type="button" class="danger-btn" id="confirmCancelBtn">この内容でキャンセル確定</button>
+  `;
+  document.getElementById("confirmCancelBtn").addEventListener("click", async ()=>{
+    const finalFoodFee = Number(document.getElementById("cancelFoodOverride").value)||0;
+    const finalUsageFee = Number(document.getElementById("cancelUsageOverride").value)||0;
+    await finalizeCancel(record, foodPercent, finalFoodFee, usagePercent, finalUsageFee);
+  });
+}
+async function finalizeCancel(record, foodPercent, foodFee, usagePercent, usageFee){
+  const list = await loadDateReservations(record.date);
+  const target = list.find(r=>r.id===record.id);
+  if (!target) return;
+  target.status = "cancelled";
+  target.cancelledAt = new Date().toISOString();
+  target.cancelFoodPercent = foodPercent;
+  target.cancelFoodFee = foodFee;
+  target.cancelUsagePercent = usagePercent;
+  target.cancelUsageFee = usageFee;
+  target.cancelFeeAmount = foodFee + usageFee;
+  target.updatedAt = new Date().toISOString();
+  try{
+    await saveReservationRecord(target);
+  }catch(e){ handleApiError(e); showToast("⚠ 保存に失敗しました"); return; }
+  closeModal();
+  await refreshCurrentView(true);
+  showToast("キャンセル処理を行いました");
+}
+async function handleRestore(){
+  const date = document.getElementById("f_date").value;
+  const list = await loadDateReservations(date);
+  const target = list.find(r=>r.id===state.editingId);
+  if (!target) return;
+  target.status = "active";
+  target.cancelledAt = null;
+  target.cancelFoodPercent = null; target.cancelFoodFee = null;
+  target.cancelUsagePercent = null; target.cancelUsageFee = null;
+  target.cancelFeeAmount = null;
+  target.updatedAt = new Date().toISOString();
+  try{
+    await saveReservationRecord(target);
+  }catch(e){ handleApiError(e); showToast("⚠ 保存に失敗しました"); return; }
+  closeModal();
+  await refreshCurrentView(true);
+  showToast("通常状態に戻しました");
+}
+
+async function openAddModal(){
+  state.editingId = null;
+  state.editingOriginal = null;
+  state.selectedTables = new Set();
+  state.bookingOptions = [];
+  document.getElementById("modalTitle").textContent = "予約を追加";
+  document.getElementById("resForm").reset();
+  document.getElementById("f_date").value = state.currentDate;
+  buildStartOptions();
+  document.getElementById("f_start").value = minToHHMM(LUNCH_START);
+  buildDurationOptions();
+  if (Array.from(document.getElementById("f_duration").options).some(o=>o.value==="180")){
+    document.getElementById("f_duration").value = "180";
+  }
+  updateDurationHint();
+  buildStaffOptions();
+  toggleNameFieldsBySource();
+  document.getElementById("f_adult").value = 0;
+  document.getElementById("f_child").value = 0;
+  document.getElementById("f_infant").value = 0;
+  document.getElementById("f_arrived").checked = false;
+  updateFoodDeadlineWarning();
+  buildOptionPresets();
+  renderOptionChips();
+  await buildTableGrid();
+  updateFeeAndSuggestion();
+  document.getElementById("deleteBtn").classList.add("hidden");
+  document.getElementById("printSlipBtn").classList.add("hidden");
+  renderCancelSection(null);
+  openModal();
+}
+
+async function openEditModal(id, date){
+  const list = await loadDateReservations(date);
+  const r = list.find(x=>x.id===id);
+  if (!r) return;
+  state.editingId = id;
+  state.editingOriginal = r;
+  state.selectedTables = new Set(r.tables);
+  state.bookingOptions = JSON.parse(JSON.stringify(r.options||[]));
+  document.getElementById("modalTitle").textContent = "予約を編集";
+  document.getElementById("f_date").value = r.date;
+  buildStartOptions();
+  document.getElementById("f_start").value = r.start;
+  buildDurationOptions();
+  document.getElementById("f_duration").value = String(r.durationMin||180);
+  buildStaffOptions();
+  document.getElementById("f_staff").value = r.staff||"";
+  document.querySelector(`input[name="f_source"][value="${r.source}"]`).checked = true;
+  toggleNameFieldsBySource();
+  document.getElementById("f_nameKanji").value = r.nameKanji||"";
+  document.getElementById("f_nameKana").value = r.nameKana||"";
+  document.getElementById("f_phone").value = r.phone||"";
+  const c = r.counts||{adult:0,child:0,infant:0};
+  document.getElementById("f_adult").value = c.adult;
+  document.getElementById("f_child").value = c.child;
+  document.getElementById("f_infant").value = c.infant;
+  document.getElementById("f_arrived").checked = !!r.arrived;
+  document.getElementById("f_notes").value = r.notes||"";
+  updateFoodDeadlineWarning();
+  buildOptionPresets();
+  renderOptionChips();
+  await buildTableGrid();
+  updateFeeAndSuggestion();
+  document.getElementById("deleteBtn").classList.remove("hidden");
+  document.getElementById("printSlipBtn").classList.remove("hidden");
+  renderCancelSection(r);
+  openModal();
+}
+
+async function handleDelete(){
+  const btn = document.getElementById("deleteBtn");
+  if (!btn.classList.contains("confirming")){
+    btn.classList.add("confirming");
+    btn.textContent = "本当に削除しますか？（もう一度押す）";
+    return;
+  }
+  try{
+    await deleteReservationRecord(state.editingId);
+  }catch(e){ handleApiError(e); showToast("⚠ 削除に失敗しました"); return; }
+  closeModal();
+  await refreshCurrentView(true);
+  showToast("予約を削除しました");
+}
+
+async function handleSubmit(e){
+  e.preventDefault();
+  const date = document.getElementById("f_date").value;
+  const start = document.getElementById("f_start").value;
+  const durationMin = Number(document.getElementById("f_duration").value)||180;
+  const source = document.querySelector('input[name="f_source"]:checked').value;
+  const staff = document.getElementById("f_staff").value;
+  const nameKanji = document.getElementById("f_nameKanji").value.trim();
+  const nameKana = document.getElementById("f_nameKana").value.trim();
+  const phone = document.getElementById("f_phone").value.trim();
+  const arrived = document.getElementById("f_arrived").checked;
+  const notes = document.getElementById("f_notes").value.trim();
+  const counts = readCounts();
+
+  if (!nameKana){ showToast("お名前（カタカナ）を入力してください"); return; }
+  if (source === "form" && !nameKanji){ showToast("フォーム予約は漢字のお名前も入力してください"); return; }
+  // テーブルは予約時点で未定でもよい（当日割り振り運用のため、選択は任意）
+
+  const feeCalc = computeFeeFromForm();
+
+  const orig = state.editingOriginal;
+  const originalCreatedAt = orig ? orig.createdAt : null;
+  const originalStatus = orig ? (orig.status || "active") : "active";
+  const originalCancelInfo = orig ? {
+    cancelledAt: orig.cancelledAt||null,
+    cancelFoodPercent: orig.cancelFoodPercent!=null?orig.cancelFoodPercent:null,
+    cancelFoodFee: orig.cancelFoodFee!=null?orig.cancelFoodFee:null,
+    cancelUsagePercent: orig.cancelUsagePercent!=null?orig.cancelUsagePercent:null,
+    cancelUsageFee: orig.cancelUsageFee!=null?orig.cancelUsageFee:null,
+    cancelFeeAmount: orig.cancelFeeAmount!=null?orig.cancelFeeAmount:null
+  } : {};
+
+  const payload = {
+    id: state.editingId || ("r"+Date.now()+Math.random().toString(36).slice(2,7)),
+    date, start, durationMin, source, staff,
+    nameKanji: nameKanji||null, nameKana, phone, notes, arrived,
+    tables: Array.from(state.selectedTables).sort((a,b)=>a-b),
+    counts,
+    options: state.bookingOptions.filter(o=>o.label && o.qty>0),
+    priceSnapshot: { ...state.settings.pricing },
+    totalAmount: feeCalc.total,
+    usageSubtotal: feeCalc.usageSubtotal,
+    foodSubtotal: feeCalc.foodSubtotal,
+    status: originalStatus,
+    cancelledAt: originalCancelInfo.cancelledAt!==undefined ? originalCancelInfo.cancelledAt : null,
+    cancelFoodPercent: originalCancelInfo.cancelFoodPercent!==undefined ? originalCancelInfo.cancelFoodPercent : null,
+    cancelFoodFee: originalCancelInfo.cancelFoodFee!==undefined ? originalCancelInfo.cancelFoodFee : null,
+    cancelUsagePercent: originalCancelInfo.cancelUsagePercent!==undefined ? originalCancelInfo.cancelUsagePercent : null,
+    cancelUsageFee: originalCancelInfo.cancelUsageFee!==undefined ? originalCancelInfo.cancelUsageFee : null,
+    cancelFeeAmount: originalCancelInfo.cancelFeeAmount!==undefined ? originalCancelInfo.cancelFeeAmount : null,
+    createdAt: originalCreatedAt || new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  try{
+    await saveReservationRecord(payload);
+  }catch(err){
+    handleApiError(err);
+    showToast("⚠ 保存に失敗しました。接続設定をご確認ください。");
+    return;
+  }
+
+  closeModal();
+  state.currentDate = date;
+  await refreshCurrentView(true);
+  showToast("保存しました");
+}
+
+/* ===================== 印刷 ===================== */
+function printDayLedger(){
+  loadDateReservations(state.currentDate).then(fullList=>{
+    const list = state.showCancelled ? fullList : fullList.filter(r=>r.status!=="cancelled");
+    const rowsHtml = list.map(r=>{
+      const dur = r.durationMin||180;
+      const end = minToHHMM(hhmmToMin(r.start)+dur);
+      const c = r.counts||{adult:0,child:0,infant:0};
+      const totalPeople = c.adult+c.child+c.infant;
+      const opts = (r.options||[]).map(o=>`${o.label}×${o.qty}`).join(", ");
+      return `<tr>
+        <td>${tablesLabel(r)}</td>
+        <td>${r.start}-${end}</td>
+        <td>${escapeHtml(displayName(r))}</td>
+        <td>${c.adult}/${c.child}/${c.infant}</td>
+        <td>${totalPeople}名</td>
+        <td>${escapeHtml(r.phone||"")}</td>
+        <td>${opts}</td>
+        <td>${fmtYen(r.totalAmount)}</td>
+        <td>${escapeHtml(r.staff||"")}</td>
+        <td>${r.status==="cancelled"?"キャンセル":"通常"}</td>
+        <td>${escapeHtml(r.notes||"")}</td>
+      </tr>`;
+    }).join("");
+    const area = document.getElementById("printArea");
+    area.innerHTML = `
+      <h2>BBQ場 予約台帳　${fmtDateJP(state.currentDate)}（${weekdayLabel(state.currentDate)}）</h2>
+      <table class="print-ledger-table">
+        <thead><tr><th>卓</th><th>時間</th><th>名前</th><th>大/小/未</th><th>総人数</th><th>連絡先</th><th>オプション</th><th>金額</th><th>担当</th><th>状態</th><th>要望・メモ</th></tr></thead>
+        <tbody>${rowsHtml || '<tr><td colspan="11">予約はありません</td></tr>'}</tbody>
+      </table>
+    `;
+    window.print();
+  });
+}
+function buildSlipHtml(record){
+  const dur = record.durationMin||180;
+  const end = minToHHMM(hhmmToMin(record.start)+dur);
+  const c = record.counts||{adult:0,child:0,infant:0};
+  const optsHtml = (record.options||[]).map(o=>`<div class="row"><span>${escapeHtml(o.label)} ×${o.qty}</span><span>${fmtYen(o.price*o.qty)}</span></div>`).join("");
+  const cancelHtml = record.status==="cancelled"
+    ? `<div class="row total"><span>キャンセル料（非課税）</span><span>${fmtYen(record.cancelFeeAmount)}</span></div>` : "";
+  return `
+    <div class="print-slip">
+      <h2>${escapeHtml(displayName(record))}様</h2>
+      ${record.nameKanji?`<div class="hint">フリガナ：${escapeHtml(record.nameKana)}</div>`:""}
+      <div class="row"><span>日付</span><span>${fmtDateJP(record.date)}（${weekdayLabel(record.date)}）</span></div>
+      <div class="row"><span>時間</span><span>${record.start} - ${end}</span></div>
+      <div class="row"><span>テーブル</span><span>${tablesLabel(record)}</span></div>
+      <div class="row"><span>人数</span><span>大人${c.adult}・小人${c.child}・未就学児${c.infant}</span></div>
+      ${optsHtml}
+      <div class="row total"><span>合計金額</span><span>${fmtYen(record.totalAmount)}</span></div>
+      ${cancelHtml}
+      <div class="row"><span>担当</span><span>${escapeHtml(record.staff||"")}</span></div>
+      ${record.notes?`<div class="row"><span>メモ</span><span>${escapeHtml(record.notes)}</span></div>`:""}
+    </div>
+  `;
+}
+function printSlip(record){
+  document.getElementById("printArea").innerHTML = buildSlipHtml(record);
+  window.print();
+}
+async function printAllSlipsForDate(date){
+  const fullList = await loadDateReservations(date);
+  const list = state.showCancelled ? fullList : fullList.filter(r=>r.status!=="cancelled");
+  if (list.length === 0){ showToast("この日に予約がありません"); return; }
+  const html = list.map(r=>`<div style="page-break-after:always;">${buildSlipHtml(r)}</div>`).join("");
+  document.getElementById("printArea").innerHTML = html;
+  window.print();
+}
+
+function renderFoodOrderPanel(activeList){
+  const panel = document.getElementById("foodOrderPanel");
+  const totals = {};
+  activeList.forEach(r=>{
+    (r.options||[]).forEach(o=>{
+      if (o.category === "usage") return;
+      totals[o.label] = (totals[o.label]||0) + (Number(o.qty)||0);
+    });
+  });
+  const labels = Object.keys(totals);
+  if (labels.length === 0){ panel.classList.add("hidden"); panel.innerHTML=""; return; }
+  panel.classList.remove("hidden");
+  const items = labels.map(l=>`<span class="tag">${escapeHtml(l)}：${totals[l]}</span>`).join(" ");
+  panel.innerHTML = `<b>📦 この日の食材発注集計：</b> ${items}`;
+}
+/* ===================== レンダリング：日別台帳ページ ===================== */
+async function renderLedgerView(){
+  document.getElementById("datePickerLedger").value = state.currentDate;
+  document.getElementById("dateWeekdayLedger").textContent = weekdayLabel(state.currentDate);
+  const fullList = await loadDateReservations(state.currentDate);
+  const list = state.showCancelled ? fullList : fullList.filter(r=>r.status!=="cancelled");
+
+  const active = fullList.filter(r=>r.status!=="cancelled");
+  const revenue = active.reduce((s,r)=>s+(r.totalAmount||0),0);
+  const totalPeopleAll = active.reduce((s,r)=> s+(r.counts?(r.counts.adult+r.counts.child+r.counts.infant):0), 0);
+  const tableCountAssigned = new Set(); active.forEach(r=>r.tables.forEach(t=>tableCountAssigned.add(t)));
+  const unassignedCount = active.filter(r=>!r.tables || r.tables.length===0).length;
+  const deadlineChip = isFoodDeadlinePassed(state.currentDate)
+    ? `<span style="color:var(--ember);font-weight:700;">⚠ 食材注文期限超過（${fmtDeadline(state.currentDate)}まで）</span>` : "";
+  document.getElementById("ledgerDaySummary").innerHTML = `
+    <span><b>${fmtDateJP(state.currentDate)}</b>${weekdayLabel(state.currentDate)}</span>
+    <span>予約 <b>${active.length}</b>件</span>
+    <span>総人数 <b>${totalPeopleAll}</b>名</span>
+    <span>利用テーブル <b>${tableCountAssigned.size}</b>卓割当済${unassignedCount>0?`／未割当${unassignedCount}件`:""}</span>
+    <span>売上見込 <b>${fmtYen(revenue)}</b></span>
+    ${deadlineChip}
+  `;
+  renderFoodOrderPanel(active);
+
+  const body = document.getElementById("ledgerTableBody");
+  if (list.length === 0){
+    body.innerHTML = `<tr><td colspan="13"><div class="empty-state">この日の予約はまだありません。</div></td></tr>`;
+    return;
+  }
+  const sorted = list.slice().sort((a,b)=> a.start.localeCompare(b.start));
+  body.innerHTML = sorted.map(r=>{
+    const dur = r.durationMin||180;
+    const end = minToHHMM(hhmmToMin(r.start)+dur);
+    const c = r.counts||{adult:0,child:0,infant:0};
+    const totalPeople = c.adult+c.child+c.infant;
+    const opts = (r.options||[]).map(o=>`<span class="tag">${escapeHtml(o.label)}×${o.qty}</span>`).join("");
+    const isCancelled = r.status==="cancelled";
+    return `<tr class="${isCancelled?'is-cancelled':''}">
+      <td>${tablesLabel(r)}</td>
+      <td>${r.start}-${end}</td>
+      <td>${escapeHtml(displayName(r))}</td>
+      <td>${c.adult}/${c.child}/${c.infant}</td>
+      <td>${totalPeople}名</td>
+      <td>${escapeHtml(r.phone||"")}</td>
+      <td><span class="src-tag ${r.source}">${r.source==="phone"?"📞電話":"📝フォーム"}</span></td>
+      <td>${opts}</td>
+      <td>${fmtYen(r.totalAmount)}</td>
+      <td>${escapeHtml(r.staff||"")}</td>
+      <td><span class="status-tag ${isCancelled?'cancelled':'active'}">${isCancelled?"キャンセル":"通常"}</span></td>
+      <td>${escapeHtml(r.notes||"")}</td>
+      <td class="row-actions">
+        <button class="icon-btn" data-ledger-edit="${r.id}">編集</button>
+        <button class="icon-btn" data-ledger-print="${r.id}">🖨印刷</button>
+      </td>
+    </tr>`;
+  }).join("");
+
+  body.querySelectorAll("[data-ledger-edit]").forEach(btn=>{
+    btn.addEventListener("click", ()=> openEditModal(btn.dataset.ledgerEdit, state.currentDate));
+  });
+  body.querySelectorAll("[data-ledger-print]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      const r = sorted.find(x=>x.id===btn.dataset.ledgerPrint);
+      if (r) printSlip(r);
+    });
+  });
+}
+
+/* ===================== レンダリング：売上ページ ===================== */
+function renderSalesView(){
+  const byDate = {};
+  state.allCache.forEach(r=>{
+    if (!byDate[r.date]) byDate[r.date] = [];
+    byDate[r.date].push(r);
+  });
+  const dates = Object.keys(byDate).sort();
+
+  let grand = {count:0, people:0, usage:0, food:0, subtotal:0, cancelFee:0, total:0};
+
+  const rowsHtml = dates.map(date=>{
+    const list = byDate[date];
+    const active = list.filter(r=>r.status!=="cancelled");
+    const cancelled = list.filter(r=>r.status==="cancelled");
+    const count = active.length;
+    const people = active.reduce((s,r)=> s+(r.counts?(r.counts.adult+r.counts.child+r.counts.infant):0), 0);
+    const usage = active.reduce((s,r)=> s+(r.usageSubtotal||0), 0);
+    const food = active.reduce((s,r)=> s+(r.foodSubtotal||0), 0);
+    const subtotal = usage + food;
+    const cancelFee = cancelled.reduce((s,r)=> s+(r.cancelFeeAmount||0), 0);
+    const total = subtotal + cancelFee;
+
+    grand.count += count; grand.people += people; grand.usage += usage; grand.food += food;
+    grand.subtotal += subtotal; grand.cancelFee += cancelFee; grand.total += total;
+
+    return `<tr>
+      <td><a href="#" data-jump-date="${date}" style="color:var(--accent-dark);font-weight:700;text-decoration:underline;">${fmtDateJP(date)}（${weekdayLabel(date).slice(0,1)}）</a></td>
+      <td>${count}件</td>
+      <td>${people}名</td>
+      <td>${fmtYen(usage)}</td>
+      <td>${fmtYen(food)}</td>
+      <td>${fmtYen(subtotal)}</td>
+      <td>${fmtYen(cancelFee)}</td>
+      <td><b>${fmtYen(total)}</b></td>
+    </tr>`;
+  }).join("");
+
+  document.getElementById("salesSummary").innerHTML = `
+    <span>対象日数 <b>${dates.length}</b>日（クリックでその日のタイムラインへ移動できます）</span>
+    <span>予約件数合計 <b>${grand.count}</b>件</span>
+    <span>来場人数合計 <b>${grand.people}</b>名</span>
+    <span>売上合計 <b>${fmtYen(grand.total)}</b></span>
+  `;
+
+  const body = document.getElementById("salesTableBody");
+  body.innerHTML = (rowsHtml || `<tr><td colspan="8"><div class="empty-state">まだ予約データがありません。</div></td></tr>`) +
+    `<tr style="background:#efe9da;font-weight:700;">
+      <td>合計</td><td>${grand.count}件</td><td>${grand.people}名</td>
+      <td>${fmtYen(grand.usage)}</td><td>${fmtYen(grand.food)}</td>
+      <td>${fmtYen(grand.subtotal)}</td><td>${fmtYen(grand.cancelFee)}</td><td>${fmtYen(grand.total)}</td>
+    </tr>`;
+
+  body.querySelectorAll("[data-jump-date]").forEach(link=>{
+    link.addEventListener("click", (e)=>{
+      e.preventDefault();
+      state.currentDate = link.dataset.jumpDate;
+      setView("timeline");
+    });
+  });
+}
+
+/* ===================== トースト ===================== */
+let toastTimer = null;
+function showToast(msg){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=> t.classList.add("hidden"), 2200);
+}
+
+/* ===================== ビュー切り替え・更新 ===================== */
+async function refreshCurrentView(force){
+  if (force){ state.cache = {}; state.allLoaded = false; }
+  if (!state.settingsLoaded) await loadSettings();
+  if (state.view === "timeline"){
+    await renderTimeline();
+  } else if (state.view === "ledger") {
+    await renderLedgerView();
+  } else if (state.view === "list") {
+    if (!state.allLoaded) await ensureAllLoaded();
+    renderList();
+  } else if (state.view === "sales") {
+    if (!state.allLoaded) await ensureAllLoaded();
+    renderSalesView();
+  } else if (state.view === "settings") {
+    renderSettings();
+  }
+  document.getElementById("updatedAt").textContent = "更新: " + new Date().toLocaleTimeString("ja-JP",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+}
+
+function setView(view){
+  state.view = view;
+  document.querySelectorAll(".toggle-btn").forEach(b=> b.classList.toggle("active", b.dataset.view===view));
+  document.getElementById("timelineView").classList.toggle("hidden", view!=="timeline");
+  document.getElementById("ledgerView").classList.toggle("hidden", view!=="ledger");
+  document.getElementById("listView").classList.toggle("hidden", view!=="list");
+  document.getElementById("salesView").classList.toggle("hidden", view!=="sales");
+  document.getElementById("settingsView").classList.toggle("hidden", view!=="settings");
+  refreshCurrentView(false);
+}
+
+async function navigateDateAsync(dir){
+  if (!state.allLoaded) await ensureAllLoaded();
+  const dates = combinedDateList();
+  let idx = dates.indexOf(state.currentDate);
+  if (idx === -1){
+    dates.push(state.currentDate); dates.sort();
+    idx = dates.indexOf(state.currentDate);
+  }
+  const nextIdx = idx + dir;
+  if (nextIdx < 0 || nextIdx >= dates.length){
+    showToast(dir>0 ? "これより先の営業日はありません" : "これより前の営業日はありません");
+    return;
+  }
+  state.currentDate = dates[nextIdx];
+  await refreshCurrentView(false);
+}
+
+/* ===================== 初期化 ===================== */
+function init(){
+  const existingUrl = getGasUrl();
+  if (!existingUrl){
+    document.getElementById("setupBanner").classList.remove("hidden");
+  } else {
+    document.getElementById("settingsGasUrl").value = existingUrl;
+  }
+  document.getElementById("setupGasUrl").value = existingUrl;
+
+  document.getElementById("setupTestBtn").addEventListener("click", async ()=>{
+    const url = document.getElementById("setupGasUrl").value.trim();
+    const result = document.getElementById("setupResult");
+    if (!url){ result.textContent = "URLを入力してください"; return; }
+    result.textContent = "接続テスト中...";
+    try{
+      await pingGas(url);
+      result.textContent = "✅ 接続できました。「保存して使い始める」を押してください。";
+    }catch(err){
+      result.textContent = "⚠ 接続できませんでした。URLをご確認ください。（"+err.message+"）";
+    }
+  });
+  document.getElementById("setupSaveBtn").addEventListener("click", async ()=>{
+    const url = document.getElementById("setupGasUrl").value.trim();
+    if (!url){ document.getElementById("setupResult").textContent = "URLを入力してください"; return; }
+    setGasUrl(url);
+    document.getElementById("settingsGasUrl").value = url;
+    document.getElementById("setupBanner").classList.add("hidden");
+    document.getElementById("connectionErrorBanner").classList.add("hidden");
+    showToast("接続設定を保存しました");
+    await refreshCurrentView(true);
+  });
+  document.getElementById("settingsTestBtn").addEventListener("click", async ()=>{
+    const url = document.getElementById("settingsGasUrl").value.trim();
+    const result = document.getElementById("settingsUrlResult");
+    if (!url){ result.textContent = "URLを入力してください"; return; }
+    result.textContent = "接続テスト中...";
+    try{
+      await pingGas(url);
+      result.textContent = "✅ 接続できました。";
+    }catch(err){
+      result.textContent = "⚠ 接続できませんでした。URLをご確認ください。（"+err.message+"）";
+    }
+  });
+  document.getElementById("settingsSaveUrlBtn").addEventListener("click", async ()=>{
+    const url = document.getElementById("settingsGasUrl").value.trim();
+    if (!url){ document.getElementById("settingsUrlResult").textContent = "URLを入力してください"; return; }
+    setGasUrl(url);
+    document.getElementById("setupBanner").classList.add("hidden");
+    document.getElementById("connectionErrorBanner").classList.add("hidden");
+    document.getElementById("settingsUrlResult").textContent = "保存しました。";
+    showToast("接続設定を保存しました");
+    await refreshCurrentView(true);
+  });
+
+  buildStartOptions();
+
+  document.querySelectorAll(".toggle-btn").forEach(b=>{
+    b.addEventListener("click", ()=> setView(b.dataset.view));
+  });
+  document.getElementById("refreshBtn").addEventListener("click", ()=> refreshCurrentView(true));
+  document.getElementById("prevDate").addEventListener("click", ()=> navigateDateAsync(-1));
+  document.getElementById("nextDate").addEventListener("click", ()=> navigateDateAsync(1));
+  document.getElementById("datePicker").addEventListener("change", (e)=>{
+    state.currentDate = e.target.value;
+    refreshCurrentView(false);
+  });
+  document.getElementById("showCancelledChk").addEventListener("change", (e)=>{
+    state.showCancelled = e.target.checked;
+    refreshCurrentView(false);
+  });
+  document.getElementById("printLedgerBtn").addEventListener("click", printDayLedger);
+
+  document.getElementById("prevDateLedger").addEventListener("click", ()=> navigateDateAsync(-1));
+  document.getElementById("nextDateLedger").addEventListener("click", ()=> navigateDateAsync(1));
+  document.getElementById("datePickerLedger").addEventListener("change", (e)=>{
+    state.currentDate = e.target.value;
+    refreshCurrentView(false);
+  });
+  document.getElementById("printLedgerBtn2").addEventListener("click", printDayLedger);
+  document.getElementById("printAllSlipsBtn").addEventListener("click", ()=> printAllSlipsForDate(state.currentDate));
+
+  document.getElementById("addResBtn").addEventListener("click", openAddModal);
+  document.getElementById("addResBtn2").addEventListener("click", openAddModal);
+  document.getElementById("cancelBtn").addEventListener("click", closeModal);
+  document.getElementById("modalOverlay").addEventListener("click", (e)=>{
+    if (e.target.id === "modalOverlay") closeModal();
+  });
+  document.getElementById("resForm").addEventListener("submit", handleSubmit);
+  document.getElementById("deleteBtn").addEventListener("click", handleDelete);
+  document.getElementById("printSlipBtn").addEventListener("click", async ()=>{
+    if (!state.editingId) return;
+    const date = document.getElementById("f_date").value;
+    const list = await loadDateReservations(date);
+    const r = list.find(x=>x.id===state.editingId);
+    if (r) printSlip(r);
+  });
+
+  document.getElementById("f_start").addEventListener("change", ()=>{ buildDurationOptions(); buildTableGrid(); });
+  document.getElementById("f_duration").addEventListener("change", ()=>{ updateDurationHint(); buildTableGrid(); });
+  document.getElementById("f_date").addEventListener("change", ()=>{ buildTableGrid(); updateFoodDeadlineWarning(); });
+  document.querySelectorAll('input[name="f_source"]').forEach(r=> r.addEventListener("change", toggleNameFieldsBySource));
+  ["f_adult","f_child","f_infant"].forEach(id=>{
+    document.getElementById(id).addEventListener("input", updateFeeAndSuggestion);
+  });
+
+  document.getElementById("addCustomOption").addEventListener("click", ()=>{
+    const nameEl = document.getElementById("customOptionName");
+    const priceEl = document.getElementById("customOptionPrice");
+    const qtyEl = document.getElementById("customOptionQty");
+    const catEl = document.getElementById("customOptionCategory");
+    if (!nameEl.value.trim()) return;
+    addOption(nameEl.value.trim(), Number(qtyEl.value)||1, Number(priceEl.value)||0, catEl.value);
+    nameEl.value = ""; priceEl.value = ""; qtyEl.value = 1;
+  });
+  document.getElementById("searchInput").addEventListener("input", renderList);
+
+  // settings handlers
+  document.getElementById("savePricingBtn").addEventListener("click", async ()=>{
+    state.settings.pricing = {
+      adult: Number(document.getElementById("price_adult").value)||0,
+      child: Number(document.getElementById("price_child").value)||0,
+      infant: Number(document.getElementById("price_infant").value)||0
+    };
+    await saveSettingKey("pricing", state.settings.pricing);
+    showToast("料金設定を保存しました");
+  });
+  document.getElementById("addOptionCatalogBtn").addEventListener("click", async ()=>{
+    const nameEl = document.getElementById("newOptionName");
+    const priceEl = document.getElementById("newOptionPrice");
+    const catEl = document.getElementById("newOptionCategory");
+    if (!nameEl.value.trim()) return;
+    state.settings.optionCatalog.push({id:"o"+Date.now(), label:nameEl.value.trim(), price:Number(priceEl.value)||0, category:catEl.value});
+    await saveSettingKey("optionCatalog", state.settings.optionCatalog);
+    nameEl.value=""; priceEl.value="";
+    renderSettings();
+    showToast("追加しました");
+  });
+  document.getElementById("addStaffBtn").addEventListener("click", async ()=>{
+    const nameEl = document.getElementById("newStaffName");
+    if (!nameEl.value.trim()) return;
+    state.settings.staffList.push(nameEl.value.trim());
+    await saveSettingKey("staffList", state.settings.staffList);
+    nameEl.value="";
+    renderSettings();
+    showToast("追加しました");
+  });
+  document.getElementById("addCancelFoodTierBtn").addEventListener("click", async ()=>{
+    const daysEl = document.getElementById("newCancelFoodDays");
+    const pctEl = document.getElementById("newCancelFoodPercent");
+    if (daysEl.value==="" || pctEl.value==="") return;
+    state.settings.cancelPolicyFood.push({daysBefore:Number(daysEl.value), feePercent:Number(pctEl.value)});
+    await saveSettingKey("cancelPolicyFood", state.settings.cancelPolicyFood);
+    daysEl.value=""; pctEl.value="";
+    renderSettings();
+    showToast("追加しました");
+  });
+  document.getElementById("addCancelUsageTierBtn").addEventListener("click", async ()=>{
+    const daysEl = document.getElementById("newCancelUsageDays");
+    const pctEl = document.getElementById("newCancelUsagePercent");
+    if (daysEl.value==="" || pctEl.value==="") return;
+    state.settings.cancelPolicyUsage.push({daysBefore:Number(daysEl.value), feePercent:Number(pctEl.value)});
+    await saveSettingKey("cancelPolicyUsage", state.settings.cancelPolicyUsage);
+    daysEl.value=""; pctEl.value="";
+    renderSettings();
+    showToast("追加しました");
+  });
+
+  refreshCurrentView(true);
+  setInterval(()=>{
+    if (document.getElementById("modalOverlay").classList.contains("hidden")) refreshCurrentView(true);
+  }, 30000);
+}
+
+init();
+</script>
+</body>
+</html>
