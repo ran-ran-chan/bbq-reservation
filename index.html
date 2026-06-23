@@ -56,16 +56,16 @@
   .timeline-scroll{overflow:auto;max-height:68vh;position:relative;}
   .timeline-grid{display:grid;grid-template-columns:72px 1fr;min-width:780px;}
   .axis-corner{position:sticky;top:0;left:0;z-index:5;background:var(--panel);border-bottom:1px solid var(--line);border-right:1px solid var(--line);}
-  .axis-track{position:sticky;top:0;z-index:4;background:var(--panel);border-bottom:1px solid var(--line);height:34px;position:relative;}
+  .axis-track{position:sticky;top:0;z-index:4;background:var(--panel);border-bottom:1px solid var(--line);height:34px;}
   .axis-tick{position:absolute;top:0;bottom:0;border-left:1px solid var(--line);font-size:11px;color:var(--muted);padding:8px 0 0 4px;}
   .axis-gap{position:absolute;top:0;bottom:0;background:repeating-linear-gradient(45deg, #efe9da, #efe9da 4px, #f6f2ea 4px, #f6f2ea 8px);}
   .row-label{position:sticky;left:0;z-index:3;background:var(--panel);border-right:1px solid var(--line);border-bottom:1px solid var(--line);display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:12px;font-weight:700;padding:6px 2px;text-align:center;}
   .row-label small{font-weight:500;color:var(--muted);font-size:10px;}
-  .row-track{position:relative;border-bottom:1px solid var(--line);height:56px;background-image:linear-gradient(to right, var(--line) 1px, transparent 1px);background-size:10% 100%;}
+  .row-track{position:relative;border-bottom:1px solid var(--line);height:68px;background-image:linear-gradient(to right, var(--line) 1px, transparent 1px);background-size:10% 100%;}
   .now-line{position:absolute;top:0;bottom:0;width:2px;background:var(--today);z-index:6;}
   .res-block{position:absolute;top:5px;bottom:5px;border-radius:7px;padding:4px 8px;font-size:11.5px;line-height:1.3;overflow:hidden;cursor:pointer;border:1px solid rgba(0,0,0,.08);box-shadow:0 1px 2px rgba(0,0,0,.06);}
   .res-block .rb-name{font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .res-block .rb-meta{opacity:.75;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .res-block .rb-meta{opacity:.75;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;line-height:1.25;}
   .res-block.arrived{box-shadow:inset 0 0 0 2px var(--accent);}
   .res-block.cancelled{opacity:.45;background:#e4ded2 !important;text-decoration:line-through;}
 
@@ -232,13 +232,13 @@
 
   <section class="view hidden" id="listView">
     <div class="search-bar">
-      <input type="text" id="searchInput" placeholder="名前・フリガナ・電話番号で検索（全期間）">
+      <input type="text" id="searchInput" placeholder="名前・フリガナ・電話番号・日付(例: 7/5)で検索（全期間）">
       <button class="primary-btn" id="addResBtn2">＋ 予約を追加</button>
     </div>
     <table class="res-table">
       <thead>
         <tr>
-          <th>日付</th><th>時間</th><th>卓</th><th>大/小/未</th><th>名前</th><th>連絡先</th><th>経由</th><th>オプション</th><th>金額</th><th>担当</th><th>来場</th><th>状態</th><th>登録日</th><th></th>
+          <th>日付</th><th>時間</th><th>卓</th><th>大/小/未</th><th>名前</th><th>連絡先</th><th>経由</th><th>オプション</th><th>金額</th><th>担当</th><th>来場</th><th>状態</th><th>要望・メモ</th><th>登録日</th><th></th>
         </tr>
       </thead>
       <tbody id="resTableBody"></tbody>
@@ -270,6 +270,11 @@
   </section>
 
   <section class="view hidden" id="salesView">
+    <div class="search-bar">
+      <label class="check-inline">開始日 <input type="date" id="salesFrom"></label>
+      <label class="check-inline">終了日 <input type="date" id="salesTo"></label>
+      <button class="secondary-btn" id="salesClearRangeBtn">範囲をクリア</button>
+    </div>
     <div class="day-summary" id="salesSummary"></div>
     <table class="res-table" id="salesTable">
       <thead>
@@ -820,7 +825,8 @@ async function renderTimeline(){
       const width = (dur/totalMin)*100;
       const endLabel = minToHHMM(startMin+dur);
       const srcIcon = r.source === "phone" ? "📞" : "📝";
-      const optsText = (r.options||[]).map(o=>`${o.label}×${o.qty}`).join(" / ");
+      const sortedOpts = (r.options||[]).slice().sort((a,b)=> (a.category==="usage"?1:0) - (b.category==="usage"?1:0));
+      const optsText = sortedOpts.map(o=>`${o.label}×${o.qty}`).join(" / ");
       const isCancelled = r.status === "cancelled";
       blocksHtml += `<div class="res-block ${r.arrived?'arrived':''} ${isCancelled?'cancelled':''}" style="left:${left}%;width:${width}%;background:${hashColor(r.id)}" data-id="${r.id}" title="${displayNameWithKana(r)} ${r.start}-${endLabel}">
         <div class="rb-name">${srcIcon} ${displayNameWithKana(r)}${r.arrived?' ✓':''}${isCancelled?' (キャンセル)':''}</div>
@@ -849,13 +855,22 @@ async function renderTimeline(){
   });
 }
 
+function computeTableUsageStats(activeList){
+  let lunch = 0, dinner = 0;
+  activeList.forEach(r=>{
+    const n = r.tables ? r.tables.length : 0;
+    if (n===0) return;
+    const startMin = hhmmToMin(r.start);
+    if (startMin < LUNCH_END) lunch += n; else dinner += n;
+  });
+  return { lunch, dinner, total: lunch+dinner };
+}
 function renderDaySummary(fullList){
   const active = fullList.filter(r=>r.status!=="cancelled");
   const total = active.length;
   const arrived = active.filter(r=>r.arrived).length;
   const cancelledCount = fullList.length - active.length;
-  const usedTables = new Set();
-  active.forEach(r=> r.tables.forEach(t=>usedTables.add(t)));
+  const tableStats = computeTableUsageStats(active);
   const revenue = active.reduce((s,r)=>s+(r.totalAmount||0),0);
   const deadlineChip = isFoodDeadlinePassed(state.currentDate)
     ? `<span style="color:var(--ember);font-weight:700;">⚠ 食材注文期限超過（${fmtDeadline(state.currentDate)}まで）</span>` : "";
@@ -864,7 +879,7 @@ function renderDaySummary(fullList){
     <span><b>${fmtDateJP(state.currentDate)}</b>${weekdayLabel(state.currentDate)}</span>
     <span>予約 <b>${total}</b>件</span>
     <span>来場済み <b>${arrived}</b>件</span>
-    <span>利用テーブル <b>${usedTables.size}</b>/${TABLE_COUNT}卓</span>
+    <span>利用テーブル <b>${tableStats.total}</b>卓（昼${tableStats.lunch}卓／夜${tableStats.dinner}卓）</span>
     <span>売上見込 <b>${fmtYen(revenue)}</b></span>
     <span>キャンセル <b>${cancelledCount}</b>件</span>
     ${deadlineChip}
@@ -893,12 +908,14 @@ function renderList(){
   const qn = norm(q);
   const rows = state.allCache.filter(r=>{
     if (!q) return true;
-    return norm(r.nameKana).includes(qn) || norm(r.nameKanji).includes(qn) || norm(r.phone).includes(qn);
+    const dateVariants = [r.date, fmtDateJP(r.date), r.date.replace(/-/g,"/")].map(norm);
+    return norm(r.nameKana).includes(qn) || norm(r.nameKanji).includes(qn) || norm(r.phone).includes(qn)
+      || dateVariants.some(d=>d.includes(qn));
   });
 
   const body = document.getElementById("resTableBody");
   if (rows.length === 0){
-    body.innerHTML = `<tr><td colspan="14"><div class="empty-state">${q?"該当する予約が見つかりません。":"まだ予約がありません。「＋予約を追加」から登録してください。"}</div></td></tr>`;
+    body.innerHTML = `<tr><td colspan="15"><div class="empty-state">${q?"該当する予約が見つかりません。":"まだ予約がありません。「＋予約を追加」から登録してください。"}</div></td></tr>`;
     return;
   }
   body.innerHTML = rows.map(r=>{
@@ -920,6 +937,7 @@ function renderList(){
       <td>${escapeHtml(r.staff||"")}</td>
       <td><span class="arrived-chip ${r.arrived?'yes':'no'}" data-id="${r.id}" data-date="${r.date}">${r.arrived?"来場済":"未来場"}</span></td>
       <td><span class="status-tag ${isCancelled?'cancelled':'active'}">${isCancelled?("キャンセル "+(r.cancelFeeAmount!=null?fmtYen(r.cancelFeeAmount)+"(非課税)":"")):"通常"}</span></td>
+      <td>${escapeHtml(r.notes||"")}</td>
       <td>${fmtDateTimeJP(r.createdAt)}</td>
       <td class="row-actions"><button class="icon-btn" data-edit="${r.id}" data-date="${r.date}">編集</button></td>
     </tr>`;
@@ -1482,8 +1500,14 @@ function printDayLedger(){
       .slice().sort((a,b)=> a.start.localeCompare(b.start));
     const active = fullList.filter(r=>r.status!=="cancelled");
     const totalPeopleAll = active.reduce((s,r)=> s+(r.counts?(r.counts.adult+r.counts.child+r.counts.infant):0), 0);
-    const usedTables = new Set(); active.forEach(r=> r.tables.forEach(t=>usedTables.add(t)));
+    const tableStats = computeTableUsageStats(active);
     const revenue = active.reduce((s,r)=>s+(r.totalAmount||0),0);
+    const foodTotals = computeFoodTotals(active);
+    const foodLabels = Object.keys(foodTotals);
+    const foodHtml = foodLabels.length
+      ? `<div style="border:1px solid #999;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;">
+          <b>📦 食材発注集計：</b> ${foodLabels.map(l=>`${escapeHtml(l)}：${foodTotals[l]}`).join("　")}
+        </div>` : "";
     const rowsHtml = list.map(r=>{
       const dur = r.durationMin||180;
       const end = minToHHMM(hhmmToMin(r.start)+dur);
@@ -1510,9 +1534,10 @@ function printDayLedger(){
       <div style="border:1px solid #999;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;display:flex;gap:18px;">
         <span>予約件数：${active.length}件</span>
         <span>総人数：${totalPeopleAll}名</span>
-        <span>利用テーブル総数：${usedTables.size}卓</span>
+        <span>利用テーブル総数：${tableStats.total}卓（昼${tableStats.lunch}卓／夜${tableStats.dinner}卓）</span>
         <span>売上見込：${fmtYen(revenue)}</span>
       </div>
+      ${foodHtml}
       <table class="print-ledger-table">
         <thead><tr><th>卓</th><th>時間</th><th>名前</th><th>大/小/未</th><th>総人数</th><th>連絡先</th><th>オプション</th><th>金額</th><th>担当</th><th>状態</th><th>要望・メモ</th></tr></thead>
         <tbody>${rowsHtml || '<tr><td colspan="11">予約はありません</td></tr>'}</tbody>
@@ -1532,8 +1557,10 @@ function buildSlipHtml(record){
   if (c.adult>0) usageRows.push(`<div class="row"><span>大人 ${c.adult}名 × ${fmtYen(p.adult)}</span><span>${fmtYen(c.adult*p.adult)}</span></div>`);
   if (c.child>0) usageRows.push(`<div class="row"><span>小人 ${c.child}名 × ${fmtYen(p.child)}</span><span>${fmtYen(c.child*p.child)}</span></div>`);
   if (c.infant>0) usageRows.push(`<div class="row"><span>未就学児 ${c.infant}名 × ${fmtYen(p.infant)}</span><span>${fmtYen(c.infant*p.infant)}</span></div>`);
+  const peopleFeeSubtotal = c.adult*p.adult + c.child*p.child + c.infant*p.infant;
 
   const optsHtml = (record.options||[]).map(o=>`<div class="row"><span>${escapeHtml(o.label)} ×${o.qty}</span><span>${fmtYen(o.price*o.qty)}</span></div>`).join("");
+  const optsSubtotal = (record.options||[]).reduce((s,o)=> s+(Number(o.price)||0)*(Number(o.qty)||0), 0);
   const cancelHtml = record.status==="cancelled"
     ? `<div class="row total"><span>キャンセル料（非課税）</span><span>${fmtYen(record.cancelFeeAmount)}</span></div>` : "";
   const receivedLabel = record.source==="form" ? "メール受信日" : "予約受付日";
@@ -1547,10 +1574,12 @@ function buildSlipHtml(record){
       <div class="row"><span>連絡先</span><span>${escapeHtml(record.phone||"")}</span></div>
       ${record.email?`<div class="row"><span>メールアドレス</span><span>${escapeHtml(record.email)}</span></div>`:""}
       <div class="row"><span>${receivedLabel}</span><span>${record.receivedDate?fmtDateJP(record.receivedDate):""}</span></div>
+      <div class="row"><span>予約確定日（登録日）</span><span>${fmtDateJP((record.createdAt||"").slice(0,10))}</span></div>
       <div class="row"><span>予約経路</span><span>${record.source==="phone"?"📞 電話":"📝 フォーム"}</span></div>
       <div class="section-head">利用料の詳細</div>
       ${usageRows.join("")}
-      ${optsHtml ? `<div class="section-head">オプション</div>${optsHtml}` : ""}
+      <div class="row" style="font-weight:700;"><span>利用料小計</span><span>${fmtYen(peopleFeeSubtotal)}</span></div>
+      ${optsHtml ? `<div class="section-head">オプション</div>${optsHtml}<div class="row" style="font-weight:700;"><span>オプション小計</span><span>${fmtYen(optsSubtotal)}</span></div>` : ""}
       <div class="row total"><span>合計金額</span><span>${fmtYen(record.totalAmount)}</span></div>
       ${cancelHtml}
       ${record.notes?`<div class="row"><span>メモ</span><span>${escapeHtml(record.notes)}</span></div>`:""}
@@ -1570,8 +1599,7 @@ async function printAllSlipsForDate(date){
   window.print();
 }
 
-function renderFoodOrderPanel(activeList){
-  const panel = document.getElementById("foodOrderPanel");
+function computeFoodTotals(activeList){
   const totals = {};
   activeList.forEach(r=>{
     (r.options||[]).forEach(o=>{
@@ -1579,6 +1607,11 @@ function renderFoodOrderPanel(activeList){
       totals[o.label] = (totals[o.label]||0) + (Number(o.qty)||0);
     });
   });
+  return totals;
+}
+function renderFoodOrderPanel(activeList){
+  const panel = document.getElementById("foodOrderPanel");
+  const totals = computeFoodTotals(activeList);
   const labels = Object.keys(totals);
   if (labels.length === 0){ panel.classList.add("hidden"); panel.innerHTML=""; return; }
   panel.classList.remove("hidden");
@@ -1595,7 +1628,7 @@ async function renderLedgerView(){
   const active = fullList.filter(r=>r.status!=="cancelled");
   const revenue = active.reduce((s,r)=>s+(r.totalAmount||0),0);
   const totalPeopleAll = active.reduce((s,r)=> s+(r.counts?(r.counts.adult+r.counts.child+r.counts.infant):0), 0);
-  const tableCountAssigned = new Set(); active.forEach(r=>r.tables.forEach(t=>tableCountAssigned.add(t)));
+  const tableStats = computeTableUsageStats(active);
   const unassignedCount = active.filter(r=>!r.tables || r.tables.length===0).length;
   const deadlineChip = isFoodDeadlinePassed(state.currentDate)
     ? `<span style="color:var(--ember);font-weight:700;">⚠ 食材注文期限超過（${fmtDeadline(state.currentDate)}まで）</span>` : "";
@@ -1603,7 +1636,7 @@ async function renderLedgerView(){
     <span><b>${fmtDateJP(state.currentDate)}</b>${weekdayLabel(state.currentDate)}</span>
     <span>予約 <b>${active.length}</b>件</span>
     <span>総人数 <b>${totalPeopleAll}</b>名</span>
-    <span>利用テーブル <b>${tableCountAssigned.size}</b>卓割当済${unassignedCount>0?`／未割当${unassignedCount}件`:""}</span>
+    <span>利用テーブル <b>${tableStats.total}</b>卓（昼${tableStats.lunch}卓／夜${tableStats.dinner}卓）${unassignedCount>0?`／未割当${unassignedCount}件`:""}</span>
     <span>売上見込 <b>${fmtYen(revenue)}</b></span>
     ${deadlineChip}
   `;
@@ -1660,7 +1693,11 @@ function renderSalesView(){
     if (!byDate[r.date]) byDate[r.date] = [];
     byDate[r.date].push(r);
   });
-  const dates = Object.keys(byDate).sort();
+  const fromVal = document.getElementById("salesFrom").value;
+  const toVal = document.getElementById("salesTo").value;
+  let dates = Object.keys(byDate).sort();
+  if (fromVal) dates = dates.filter(d=> d >= fromVal);
+  if (toVal) dates = dates.filter(d=> d <= toVal);
 
   let grand = {count:0, people:0, usage:0, food:0, subtotal:0, cancelFee:0, total:0};
 
@@ -1900,6 +1937,14 @@ function init(){
     await saveSettingKey("pricing", state.settings.pricing);
     showToast("料金設定を保存しました");
   });
+  document.getElementById("salesFrom").addEventListener("change", renderSalesView);
+  document.getElementById("salesTo").addEventListener("change", renderSalesView);
+  document.getElementById("salesClearRangeBtn").addEventListener("click", ()=>{
+    document.getElementById("salesFrom").value = "";
+    document.getElementById("salesTo").value = "";
+    renderSalesView();
+  });
+
   document.getElementById("addOptionCatalogBtn").addEventListener("click", async ()=>{
     const nameEl = document.getElementById("newOptionName");
     const priceEl = document.getElementById("newOptionPrice");
