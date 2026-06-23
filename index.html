@@ -158,6 +158,7 @@
   .print-ledger-table th,.print-ledger-table td{border:1px solid #999;padding:4px 6px;text-align:left;}
   .print-slip{border:2px dashed #888;border-radius:10px;padding:18px 22px;max-width:480px;font-size:13px;}
   .print-slip h2{margin:0 0 10px;font-size:18px;}
+  .print-slip .section-head{font-weight:700;font-size:12px;color:var(--muted);margin:10px 0 2px;border-top:1px solid #ddd;padding-top:6px;}
   .print-slip .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted #ccc;}
   .print-slip .row.total{font-weight:700;font-size:15px;border-bottom:none;margin-top:6px;}
 
@@ -395,6 +396,17 @@
         <div class="field">
           <label>連絡先（電話番号）</label>
           <input type="tel" id="f_phone" placeholder="090-1234-5678">
+        </div>
+      </div>
+
+      <div class="field-row">
+        <div class="field hidden" id="emailField">
+          <label>メールアドレス</label>
+          <input type="text" id="f_email" placeholder="example@example.com">
+        </div>
+        <div class="field">
+          <label id="receivedDateLabel">予約受付日</label>
+          <input type="date" id="f_receivedDate">
         </div>
       </div>
 
@@ -941,17 +953,56 @@ function renderSettings(){
   document.getElementById("price_infant").value = state.settings.pricing.infant;
 
   const optTable = document.getElementById("optionCatalogTable");
-  optTable.innerHTML = `<tr><th>名称</th><th>単価</th><th>区分</th><th></th></tr>` +
+  optTable.innerHTML = `<tr><th>並び順</th><th>名称</th><th>単価</th><th>区分</th><th></th></tr>` +
     state.settings.optionCatalog.map((o,i)=>`<tr>
-      <td>${escapeHtml(o.label)}</td><td>${fmtYen(o.price)}</td>
+      <td>
+        <button class="icon-btn" data-move-up="${i}" ${i===0?"disabled":""}>▲</button>
+        <button class="icon-btn" data-move-down="${i}" ${i===state.settings.optionCatalog.length-1?"disabled":""}>▼</button>
+      </td>
+      <td><input type="text" data-name-opt="${i}" value="${escapeHtml(o.label)}" style="width:120px;"></td>
+      <td><input type="number" min="0" data-price-opt="${i}" value="${o.price}" style="width:90px;"></td>
       <td><select data-cat-opt="${i}"><option value="food" ${o.category!=="usage"?"selected":""}>食材</option><option value="usage" ${o.category==="usage"?"selected":""}>利用料</option></select></td>
       <td><button class="icon-btn" data-del-opt="${i}">削除</button></td>
     </tr>`).join("");
+  optTable.querySelectorAll("[data-name-opt]").forEach(inp=>{
+    inp.addEventListener("change", async ()=>{
+      state.settings.optionCatalog[Number(inp.dataset.nameOpt)].label = inp.value.trim();
+      await saveSettingKey("optionCatalog", state.settings.optionCatalog);
+      showToast("名称を更新しました");
+    });
+  });
+  optTable.querySelectorAll("[data-price-opt]").forEach(inp=>{
+    inp.addEventListener("change", async ()=>{
+      state.settings.optionCatalog[Number(inp.dataset.priceOpt)].price = Number(inp.value)||0;
+      await saveSettingKey("optionCatalog", state.settings.optionCatalog);
+      showToast("単価を更新しました");
+    });
+  });
   optTable.querySelectorAll("[data-cat-opt]").forEach(sel=>{
     sel.addEventListener("change", async ()=>{
       state.settings.optionCatalog[Number(sel.dataset.catOpt)].category = sel.value;
       await saveSettingKey("optionCatalog", state.settings.optionCatalog);
       showToast("区分を更新しました");
+    });
+  });
+  optTable.querySelectorAll("[data-move-up]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const i = Number(btn.dataset.moveUp);
+      if (i<=0) return;
+      const arr = state.settings.optionCatalog;
+      [arr[i-1], arr[i]] = [arr[i], arr[i-1]];
+      await saveSettingKey("optionCatalog", arr);
+      renderSettings();
+    });
+  });
+  optTable.querySelectorAll("[data-move-down]").forEach(btn=>{
+    btn.addEventListener("click", async ()=>{
+      const i = Number(btn.dataset.moveDown);
+      const arr = state.settings.optionCatalog;
+      if (i>=arr.length-1) return;
+      [arr[i+1], arr[i]] = [arr[i], arr[i+1]];
+      await saveSettingKey("optionCatalog", arr);
+      renderSettings();
     });
   });
   optTable.querySelectorAll("[data-del-opt]").forEach(btn=>{
@@ -1049,13 +1100,20 @@ function toggleNameFieldsBySource(){
   const source = document.querySelector('input[name="f_source"]:checked').value;
   const kanjiField = document.getElementById("kanjiField");
   const kanaLabel = document.getElementById("kanaLabel");
+  const emailField = document.getElementById("emailField");
+  const receivedDateLabel = document.getElementById("receivedDateLabel");
   if (source === "form"){
     kanjiField.classList.remove("hidden");
     kanaLabel.textContent = "フリガナ（カタカナ）";
+    emailField.classList.remove("hidden");
+    receivedDateLabel.textContent = "メール受信日";
   } else {
     kanjiField.classList.add("hidden");
     document.getElementById("f_nameKanji").value = "";
     kanaLabel.textContent = "お名前（カタカナ）";
+    emailField.classList.add("hidden");
+    document.getElementById("f_email").value = "";
+    receivedDateLabel.textContent = "予約受付日";
   }
 }
 function buildOptionPresets(){
@@ -1199,9 +1257,17 @@ function showCancelCalc(record){
     <div class="hint">来場予定日まで残り${daysUntil}日（設定金額は税込のため、税抜金額に料率をかけて算出しています）</div>
     <div class="price-field"><span>食材費 ${fmtYen(foodSubtotal)}(税込)→税抜${fmtYen(foodSubtotalExTax)} → 料率${foodPercent}%（手動で調整可）</span><input type="number" id="cancelFoodOverride" value="${foodFee}" min="0"></div>
     <div class="price-field"><span>利用料 ${fmtYen(usageSubtotal)}(税込)→税抜${fmtYen(usageSubtotalExTax)} → 料率${usagePercent}%（手動で調整可）</span><input type="number" id="cancelUsageOverride" value="${usageFee}" min="0"></div>
+    <div class="price-field" style="font-weight:700;font-size:14px;border-top:1px solid var(--line);padding-top:8px;"><span>キャンセル料合計（利用料＋食材費）</span><span id="cancelTotalDisplay">${fmtYen(foodFee+usageFee)}</span></div>
     <div class="hint">※キャンセル料は消費税非課税として計算しています。</div>
     <button type="button" class="danger-btn" id="confirmCancelBtn">この内容でキャンセル確定</button>
   `;
+  function updateCancelTotal(){
+    const f = Number(document.getElementById("cancelFoodOverride").value)||0;
+    const u = Number(document.getElementById("cancelUsageOverride").value)||0;
+    document.getElementById("cancelTotalDisplay").textContent = fmtYen(f+u);
+  }
+  document.getElementById("cancelFoodOverride").addEventListener("input", updateCancelTotal);
+  document.getElementById("cancelUsageOverride").addEventListener("input", updateCancelTotal);
   document.getElementById("confirmCancelBtn").addEventListener("click", async ()=>{
     const finalFoodFee = Number(document.getElementById("cancelFoodOverride").value)||0;
     const finalUsageFee = Number(document.getElementById("cancelUsageOverride").value)||0;
@@ -1267,6 +1333,8 @@ async function openAddModal(){
   document.getElementById("f_child").value = 0;
   document.getElementById("f_infant").value = 0;
   document.getElementById("f_arrived").checked = false;
+  document.getElementById("f_receivedDate").value = toISODate(new Date());
+  document.getElementById("f_email").value = "";
   updateFoodDeadlineWarning();
   buildOptionPresets();
   renderOptionChips();
@@ -1300,6 +1368,8 @@ async function openEditModal(id, date){
   document.getElementById("f_nameKanji").value = r.nameKanji||"";
   document.getElementById("f_nameKana").value = r.nameKana||"";
   document.getElementById("f_phone").value = r.phone||"";
+  document.getElementById("f_email").value = r.email||"";
+  document.getElementById("f_receivedDate").value = r.receivedDate || (r.createdAt ? r.createdAt.slice(0,10) : toISODate(new Date()));
   const c = r.counts||{adult:0,child:0,infant:0};
   document.getElementById("f_adult").value = c.adult;
   document.getElementById("f_child").value = c.child;
@@ -1345,6 +1415,8 @@ async function handleSubmit(e){
   const nameKanji = document.getElementById("f_nameKanji").value.trim();
   const nameKana = document.getElementById("f_nameKana").value.trim();
   const phone = document.getElementById("f_phone").value.trim();
+  const email = document.getElementById("f_email").value.trim();
+  const receivedDate = document.getElementById("f_receivedDate").value || toISODate(new Date());
   const arrived = document.getElementById("f_arrived").checked;
   const notes = document.getElementById("f_notes").value.trim();
   const counts = readCounts();
@@ -1370,7 +1442,7 @@ async function handleSubmit(e){
   const payload = {
     id: state.editingId || ("r"+Date.now()+Math.random().toString(36).slice(2,7)),
     date, start, durationMin, source, staff,
-    nameKanji: nameKanji||null, nameKana, phone, notes, arrived,
+    nameKanji: nameKanji||null, nameKana, phone, email, receivedDate, notes, arrived,
     tables: Array.from(state.selectedTables).sort((a,b)=>a-b),
     counts,
     options: state.bookingOptions.filter(o=>o.label && o.qty>0),
@@ -1406,7 +1478,12 @@ async function handleSubmit(e){
 /* ===================== 印刷 ===================== */
 function printDayLedger(){
   loadDateReservations(state.currentDate).then(fullList=>{
-    const list = state.showCancelled ? fullList : fullList.filter(r=>r.status!=="cancelled");
+    const list = (state.showCancelled ? fullList : fullList.filter(r=>r.status!=="cancelled"))
+      .slice().sort((a,b)=> a.start.localeCompare(b.start));
+    const active = fullList.filter(r=>r.status!=="cancelled");
+    const totalPeopleAll = active.reduce((s,r)=> s+(r.counts?(r.counts.adult+r.counts.child+r.counts.infant):0), 0);
+    const usedTables = new Set(); active.forEach(r=> r.tables.forEach(t=>usedTables.add(t)));
+    const revenue = active.reduce((s,r)=>s+(r.totalAmount||0),0);
     const rowsHtml = list.map(r=>{
       const dur = r.durationMin||180;
       const end = minToHHMM(hhmmToMin(r.start)+dur);
@@ -1430,6 +1507,12 @@ function printDayLedger(){
     const area = document.getElementById("printArea");
     area.innerHTML = `
       <h2>BBQ場 予約台帳　${fmtDateJP(state.currentDate)}（${weekdayLabel(state.currentDate)}）</h2>
+      <div style="border:1px solid #999;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;display:flex;gap:18px;">
+        <span>予約件数：${active.length}件</span>
+        <span>総人数：${totalPeopleAll}名</span>
+        <span>利用テーブル総数：${usedTables.size}卓</span>
+        <span>売上見込：${fmtYen(revenue)}</span>
+      </div>
       <table class="print-ledger-table">
         <thead><tr><th>卓</th><th>時間</th><th>名前</th><th>大/小/未</th><th>総人数</th><th>連絡先</th><th>オプション</th><th>金額</th><th>担当</th><th>状態</th><th>要望・メモ</th></tr></thead>
         <tbody>${rowsHtml || '<tr><td colspan="11">予約はありません</td></tr>'}</tbody>
@@ -1442,17 +1525,32 @@ function buildSlipHtml(record){
   const dur = record.durationMin||180;
   const end = minToHHMM(hhmmToMin(record.start)+dur);
   const c = record.counts||{adult:0,child:0,infant:0};
+  const totalPeople = c.adult+c.child+c.infant;
+  const p = record.priceSnapshot || {adult:0,child:0,infant:0};
+
+  const usageRows = [];
+  if (c.adult>0) usageRows.push(`<div class="row"><span>大人 ${c.adult}名 × ${fmtYen(p.adult)}</span><span>${fmtYen(c.adult*p.adult)}</span></div>`);
+  if (c.child>0) usageRows.push(`<div class="row"><span>小人 ${c.child}名 × ${fmtYen(p.child)}</span><span>${fmtYen(c.child*p.child)}</span></div>`);
+  if (c.infant>0) usageRows.push(`<div class="row"><span>未就学児 ${c.infant}名 × ${fmtYen(p.infant)}</span><span>${fmtYen(c.infant*p.infant)}</span></div>`);
+
   const optsHtml = (record.options||[]).map(o=>`<div class="row"><span>${escapeHtml(o.label)} ×${o.qty}</span><span>${fmtYen(o.price*o.qty)}</span></div>`).join("");
   const cancelHtml = record.status==="cancelled"
     ? `<div class="row total"><span>キャンセル料（非課税）</span><span>${fmtYen(record.cancelFeeAmount)}</span></div>` : "";
+  const receivedLabel = record.source==="form" ? "メール受信日" : "予約受付日";
+
   return `
     <div class="print-slip">
       <h2>${displayNameWithKana(record)}様</h2>
       <div class="row"><span>日付</span><span>${fmtDateJP(record.date)}（${weekdayLabel(record.date)}）</span></div>
       <div class="row"><span>時間</span><span>${record.start} - ${end}</span></div>
-      <div class="row"><span>テーブル</span><span>${tablesLabel(record)}</span></div>
-      <div class="row"><span>人数</span><span>大人${c.adult}・小人${c.child}・未就学児${c.infant}</span></div>
-      ${optsHtml}
+      <div class="row"><span>人数</span><span>大人${c.adult}・小人${c.child}・未就学児${c.infant}（合計${totalPeople}名）</span></div>
+      <div class="row"><span>連絡先</span><span>${escapeHtml(record.phone||"")}</span></div>
+      ${record.email?`<div class="row"><span>メールアドレス</span><span>${escapeHtml(record.email)}</span></div>`:""}
+      <div class="row"><span>${receivedLabel}</span><span>${record.receivedDate?fmtDateJP(record.receivedDate):""}</span></div>
+      <div class="row"><span>予約経路</span><span>${record.source==="phone"?"📞 電話":"📝 フォーム"}</span></div>
+      <div class="section-head">利用料の詳細</div>
+      ${usageRows.join("")}
+      ${optsHtml ? `<div class="section-head">オプション</div>${optsHtml}` : ""}
       <div class="row total"><span>合計金額</span><span>${fmtYen(record.totalAmount)}</span></div>
       ${cancelHtml}
       ${record.notes?`<div class="row"><span>メモ</span><span>${escapeHtml(record.notes)}</span></div>`:""}
