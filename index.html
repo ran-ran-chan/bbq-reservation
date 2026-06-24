@@ -161,6 +161,14 @@
   .print-slip .section-head{font-weight:700;font-size:12px;color:var(--muted);margin:10px 0 2px;border-top:1px solid #ddd;padding-top:6px;}
   .print-slip .row{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px dotted #ccc;}
   .print-slip .row.total{font-weight:700;font-size:15px;border-bottom:none;margin-top:6px;}
+  .slip-box{border:1px solid #999;border-radius:6px;padding:6px 10px;margin:8px 0;}
+  .slip-box .row{border-bottom:1px dotted #ddd;}
+  .slip-box .row:last-child{border-bottom:none;}
+  .slip-write-box{border-style:dashed;}
+  .write-line{border-bottom:1px solid #333;min-width:90px;display:inline-block;}
+  @media print{
+    .print-slip{margin-left:60px;}
+  }
 
   @media (max-width:720px){
     .topbar{flex-direction:column;align-items:flex-start;}
@@ -225,6 +233,7 @@
     </div>
     <div class="day-summary" id="daySummary"></div>
     <div class="hidden" id="unassignedPanel" style="background:#fbf1e8;border:1px solid #ecd9bf;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;"></div>
+    <div class="hidden" id="timelineFoodPanel" style="background:#eef3ea;border:1px solid #cfe0c8;border-radius:10px;padding:10px 14px;margin-bottom:14px;font-size:13px;"></div>
     <div class="timeline-wrap">
       <div class="timeline-scroll" id="timelineScroll"></div>
     </div>
@@ -790,6 +799,7 @@ async function renderTimeline(){
   const list = state.showCancelled ? fullList : fullList.filter(r=>r.status!=="cancelled");
   renderDaySummary(fullList);
   renderUnassignedPanel(fullList);
+  renderTimelineFoodPanel(fullList);
 
   const totalMin = DAY_END_MIN - DAY_START_MIN;
   const hourCount = totalMin/60;
@@ -865,6 +875,32 @@ function computeTableUsageStats(activeList){
   });
   return { lunch, dinner, total: lunch+dinner };
 }
+function computeReservationCountBySession(activeList){
+  let lunch = 0, dinner = 0;
+  activeList.forEach(r=>{
+    if (hhmmToMin(r.start) < LUNCH_END) lunch++; else dinner++;
+  });
+  return { lunch, dinner, total: lunch+dinner };
+}
+function isDinnerStart(startStr){
+  return hhmmToMin(startStr) >= DINNER_START;
+}
+function sessionMark(startStr){
+  return isDinnerStart(startStr) ? "★" : "";
+}
+function computeFoodTotalsBySession(activeList){
+  const lunch = {}, dinner = {}, combined = {};
+  activeList.forEach(r=>{
+    const bucket = isDinnerStart(r.start) ? dinner : lunch;
+    (r.options||[]).forEach(o=>{
+      if (o.category === "usage") return;
+      const q = Number(o.qty)||0;
+      bucket[o.label] = (bucket[o.label]||0) + q;
+      combined[o.label] = (combined[o.label]||0) + q;
+    });
+  });
+  return { lunch, dinner, combined };
+}
 function renderDaySummary(fullList){
   const active = fullList.filter(r=>r.status!=="cancelled");
   const total = active.length;
@@ -899,6 +935,23 @@ function renderUnassignedPanel(fullList){
   panel.querySelectorAll("[data-unassigned-edit]").forEach(el=>{
     el.addEventListener("click", ()=> openEditModal(el.dataset.unassignedEdit, state.currentDate));
   });
+}
+function renderTimelineFoodPanel(fullList){
+  const panel = document.getElementById("timelineFoodPanel");
+  const active = fullList.filter(r=>r.status!=="cancelled");
+  const stats = computeFoodTotalsBySession(active);
+  const combinedLabels = Object.keys(stats.combined);
+  if (combinedLabels.length === 0){ panel.classList.add("hidden"); panel.innerHTML=""; return; }
+  panel.classList.remove("hidden");
+  const combinedText = combinedLabels.map(l=>`${escapeHtml(l)}：${stats.combined[l]}`).join("　");
+  const lunchLabels = Object.keys(stats.lunch);
+  const dinnerLabels = Object.keys(stats.dinner);
+  const lunchText = lunchLabels.length ? lunchLabels.map(l=>`${escapeHtml(l)}：${stats.lunch[l]}`).join("　") : "なし";
+  const dinnerText = dinnerLabels.length ? dinnerLabels.map(l=>`${escapeHtml(l)}：${stats.dinner[l]}`).join("　") : "なし";
+  panel.innerHTML = `
+    <b>📦 この日の食材提供数：</b> ${combinedText}
+    <div class="hint" style="margin-top:4px;">昼：${lunchText}　／　夜：${dinnerText}</div>
+  `;
 }
 
 /* ===================== レンダリング：一覧・検索 ===================== */
@@ -1076,14 +1129,16 @@ function buildStartOptions(){
 }
 function buildDurationOptions(){
   const startMin = hhmmToMin(document.getElementById("f_start").value);
-  const windowEnd = startMin < LUNCH_END ? LUNCH_END : DINNER_END;
-  const maxDur = windowEnd - startMin;
-  let opts = DURATION_CHOICES.filter(d=>d<=maxDur);
-  if (opts.length===0) opts = [Math.max(15,maxDur)];
+  const nominalEnd = startMin < LUNCH_END ? LUNCH_END : DINNER_END;
+  const absoluteMax = DINNER_END - startMin; // 実際の営業終了(21:00)までは手動で選べるようにする
+  let opts = DURATION_CHOICES.filter(d=>d<=absoluteMax);
+  if (opts.length===0) opts = [Math.max(15,absoluteMax)];
   const sel = document.getElementById("f_duration");
-  const prev = Number(sel.value);
   sel.innerHTML = opts.map(d=>`<option value="${d}">${fmtDuration(d)}</option>`).join("");
-  sel.value = opts.includes(prev) ? String(prev) : String(opts[opts.length-1]);
+  // デフォルトは通常の営業終了時刻(昼16時/夜21時)に合う利用時間。3時間を超えて延長したい場合は手動で選び直せる
+  const defaultDur = Math.max(15, Math.min(180, nominalEnd - startMin));
+  const defaultChoice = opts.reduce((best,d)=> Math.abs(d-defaultDur) < Math.abs(best-defaultDur) ? d : best, opts[0]);
+  sel.value = String(defaultChoice);
   updateDurationHint();
 }
 function updateDurationHint(){
@@ -1506,7 +1561,7 @@ function printDayLedger(){
     const foodLabels = Object.keys(foodTotals);
     const foodHtml = foodLabels.length
       ? `<div style="border:1px solid #999;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;">
-          <b>📦 食材発注集計：</b> ${foodLabels.map(l=>`${escapeHtml(l)}：${foodTotals[l]}`).join("　")}
+          <b>📦 食材提供数：</b> ${foodLabels.map(l=>`${escapeHtml(l)}：${foodTotals[l]}`).join("　")}
         </div>` : "";
     const rowsHtml = list.map(r=>{
       const dur = r.durationMin||180;
@@ -1516,7 +1571,7 @@ function printDayLedger(){
       const opts = (r.options||[]).map(o=>`${o.label}×${o.qty}`).join(", ");
       return `<tr>
         <td>${tablesLabel(r)}</td>
-        <td>${r.start}-${end}</td>
+        <td>${sessionMark(r.start)}${r.start}-${end}</td>
         <td>${displayNameWithKana(r)}</td>
         <td>${c.adult}/${c.child}/${c.infant}</td>
         <td>${totalPeople}名</td>
@@ -1564,18 +1619,28 @@ function buildSlipHtml(record){
   const cancelHtml = record.status==="cancelled"
     ? `<div class="row total"><span>キャンセル料（非課税）</span><span>${fmtYen(record.cancelFeeAmount)}</span></div>` : "";
   const receivedLabel = record.source==="form" ? "メール受信日" : "予約受付日";
+  const mark = sessionMark(record.start);
 
   return `
     <div class="print-slip">
       <h2>${displayNameWithKana(record)}様</h2>
       <div class="row"><span>日付</span><span>${fmtDateJP(record.date)}（${weekdayLabel(record.date)}）</span></div>
-      <div class="row"><span>時間</span><span>${record.start} - ${end}</span></div>
+      <div class="row"><span>時間</span><span>${mark?mark+" ":""}${record.start} - ${end}</span></div>
       <div class="row"><span>人数</span><span>大人${c.adult}・小人${c.child}・未就学児${c.infant}（合計${totalPeople}名）</span></div>
-      <div class="row"><span>連絡先</span><span>${escapeHtml(record.phone||"")}</span></div>
-      ${record.email?`<div class="row"><span>メールアドレス</span><span>${escapeHtml(record.email)}</span></div>`:""}
-      <div class="row"><span>${receivedLabel}</span><span>${record.receivedDate?fmtDateJP(record.receivedDate):""}</span></div>
-      <div class="row"><span>予約確定日（登録日）</span><span>${fmtDateJP((record.createdAt||"").slice(0,10))}</span></div>
-      <div class="row"><span>予約経路</span><span>${record.source==="phone"?"📞 電話":"📝 フォーム"}</span></div>
+
+      <div class="slip-box">
+        <div class="row"><span>連絡先</span><span>${escapeHtml(record.phone||"")}</span></div>
+        ${record.email?`<div class="row"><span>メールアドレス</span><span>${escapeHtml(record.email)}</span></div>`:""}
+        <div class="row"><span>${receivedLabel}</span><span>${record.receivedDate?fmtDateJP(record.receivedDate):""}</span></div>
+        <div class="row"><span>予約確定日（登録日）</span><span>${fmtDateJP((record.createdAt||"").slice(0,10))}</span></div>
+        <div class="row"><span>予約経路</span><span>${record.source==="phone"?"📞 電話":"📝 フォーム"}</span></div>
+      </div>
+
+      <div class="slip-box slip-write-box">
+        <div class="row"><span>テーブル数</span><span class="write-line">　　　卓</span></div>
+        <div class="row"><span>終了時刻</span><span class="write-line">　　　</span></div>
+      </div>
+
       <div class="section-head">利用料の詳細</div>
       ${usageRows.join("")}
       <div class="row" style="font-weight:700;"><span>利用料小計</span><span>${fmtYen(peopleFeeSubtotal)}</span></div>
@@ -1629,12 +1694,13 @@ async function renderLedgerView(){
   const revenue = active.reduce((s,r)=>s+(r.totalAmount||0),0);
   const totalPeopleAll = active.reduce((s,r)=> s+(r.counts?(r.counts.adult+r.counts.child+r.counts.infant):0), 0);
   const tableStats = computeTableUsageStats(active);
+  const resvCountStats = computeReservationCountBySession(active);
   const unassignedCount = active.filter(r=>!r.tables || r.tables.length===0).length;
   const deadlineChip = isFoodDeadlinePassed(state.currentDate)
     ? `<span style="color:var(--ember);font-weight:700;">⚠ 食材注文期限超過（${fmtDeadline(state.currentDate)}まで）</span>` : "";
   document.getElementById("ledgerDaySummary").innerHTML = `
     <span><b>${fmtDateJP(state.currentDate)}</b>${weekdayLabel(state.currentDate)}</span>
-    <span>予約 <b>${active.length}</b>件</span>
+    <span>予約 <b>${active.length}</b>件（昼${resvCountStats.lunch}件／夜${resvCountStats.dinner}件）</span>
     <span>総人数 <b>${totalPeopleAll}</b>名</span>
     <span>利用テーブル <b>${tableStats.total}</b>卓（昼${tableStats.lunch}卓／夜${tableStats.dinner}卓）${unassignedCount>0?`／未割当${unassignedCount}件`:""}</span>
     <span>売上見込 <b>${fmtYen(revenue)}</b></span>
@@ -1657,7 +1723,7 @@ async function renderLedgerView(){
     const isCancelled = r.status==="cancelled";
     return `<tr class="${isCancelled?'is-cancelled':''}">
       <td>${tablesLabel(r)}</td>
-      <td>${r.start}-${end}</td>
+      <td>${sessionMark(r.start)}${r.start}-${end}</td>
       <td>${displayNameWithKana(r)}</td>
       <td>${c.adult}/${c.child}/${c.infant}</td>
       <td>${totalPeople}名</td>
