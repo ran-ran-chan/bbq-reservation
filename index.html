@@ -26,6 +26,8 @@
   .topbar-right{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
   .view-toggle{display:inline-flex;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:3px;}
   .toggle-btn{border:none;background:transparent;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;}
+  .session-toggle-btn{border:none;background:transparent;padding:7px 14px;border-radius:8px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;}
+  .session-toggle-btn.active{background:var(--accent);color:#fff;}
   .toggle-btn.active{background:var(--accent);color:#fff;}
   .ghost-btn{background:var(--panel);border:1px solid var(--line);border-radius:9px;padding:7px 12px;font-size:12px;color:var(--ink);cursor:pointer;display:flex;align-items:center;gap:6px;}
   .ghost-btn:hover{border-color:var(--accent);}
@@ -165,7 +167,9 @@
   .slip-box .row{border-bottom:1px dotted #ddd;}
   .slip-box .row:last-child{border-bottom:none;}
   .slip-write-box{border-style:dashed;}
-  .write-line{border-bottom:1px solid #333;min-width:90px;display:inline-block;}
+  .write-line{border-bottom:1px solid #333;display:inline-block;}
+  .write-line-short{min-width:90px;}
+  .write-line-long{min-width:180px;}
   @media print{
     .print-slip{margin-left:60px;}
   }
@@ -283,6 +287,11 @@
       <label class="check-inline">開始日 <input type="date" id="salesFrom"></label>
       <label class="check-inline">終了日 <input type="date" id="salesTo"></label>
       <button class="secondary-btn" id="salesClearRangeBtn">範囲をクリア</button>
+      <div class="view-toggle">
+        <button class="session-toggle-btn active" data-session="all">通し</button>
+        <button class="session-toggle-btn" data-session="lunch">昼営業</button>
+        <button class="session-toggle-btn" data-session="dinner">夜営業</button>
+      </div>
     </div>
     <div class="day-summary" id="salesSummary"></div>
     <table class="res-table" id="salesTable">
@@ -543,6 +552,7 @@ let state = {
   selectedTables: new Set(),
   bookingOptions: [],
   showCancelled: false,
+  salesSession: "all",
   settings: {
     pricing:{adult:0,child:0,infant:0},
     optionCatalog: DEFAULT_OPTION_CATALOG.slice(),
@@ -882,6 +892,14 @@ function computeReservationCountBySession(activeList){
   });
   return { lunch, dinner, total: lunch+dinner };
 }
+function computePeopleCountBySession(activeList){
+  let lunch = 0, dinner = 0;
+  activeList.forEach(r=>{
+    const n = r.counts ? (r.counts.adult+r.counts.child+r.counts.infant) : 0;
+    if (hhmmToMin(r.start) < LUNCH_END) lunch += n; else dinner += n;
+  });
+  return { lunch, dinner, total: lunch+dinner };
+}
 function isDinnerStart(startStr){
   return hhmmToMin(startStr) >= DINNER_START;
 }
@@ -907,13 +925,16 @@ function renderDaySummary(fullList){
   const arrived = active.filter(r=>r.arrived).length;
   const cancelledCount = fullList.length - active.length;
   const tableStats = computeTableUsageStats(active);
+  const resvStats = computeReservationCountBySession(active);
+  const peopleStats = computePeopleCountBySession(active);
   const revenue = active.reduce((s,r)=>s+(r.totalAmount||0),0);
   const deadlineChip = isFoodDeadlinePassed(state.currentDate)
     ? `<span style="color:var(--ember);font-weight:700;">⚠ 食材注文期限超過（${fmtDeadline(state.currentDate)}まで）</span>` : "";
   const el = document.getElementById("daySummary");
   el.innerHTML = `
     <span><b>${fmtDateJP(state.currentDate)}</b>${weekdayLabel(state.currentDate)}</span>
-    <span>予約 <b>${total}</b>件</span>
+    <span>予約 <b>${total}</b>件（昼${resvStats.lunch}件／夜${resvStats.dinner}件）</span>
+    <span>総人数 <b>${peopleStats.total}</b>名（昼${peopleStats.lunch}名／夜${peopleStats.dinner}名）</span>
     <span>来場済み <b>${arrived}</b>件</span>
     <span>利用テーブル <b>${tableStats.total}</b>卓（昼${tableStats.lunch}卓／夜${tableStats.dinner}卓）</span>
     <span>売上見込 <b>${fmtYen(revenue)}</b></span>
@@ -1556,12 +1577,17 @@ function printDayLedger(){
     const active = fullList.filter(r=>r.status!=="cancelled");
     const totalPeopleAll = active.reduce((s,r)=> s+(r.counts?(r.counts.adult+r.counts.child+r.counts.infant):0), 0);
     const tableStats = computeTableUsageStats(active);
+    const resvStats = computeReservationCountBySession(active);
+    const peopleStats = computePeopleCountBySession(active);
     const revenue = active.reduce((s,r)=>s+(r.totalAmount||0),0);
-    const foodTotals = computeFoodTotals(active);
-    const foodLabels = Object.keys(foodTotals);
-    const foodHtml = foodLabels.length
+    const foodStats = computeFoodTotalsBySession(active);
+    const combinedLabels = Object.keys(foodStats.combined);
+    const lunchFoodLabels = Object.keys(foodStats.lunch);
+    const dinnerFoodLabels = Object.keys(foodStats.dinner);
+    const foodHtml = combinedLabels.length
       ? `<div style="border:1px solid #999;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;">
-          <b>📦 食材提供数：</b> ${foodLabels.map(l=>`${escapeHtml(l)}：${foodTotals[l]}`).join("　")}
+          <div><b>📦 食材提供数：</b> ${combinedLabels.map(l=>`${escapeHtml(l)}：${foodStats.combined[l]}`).join("　")}</div>
+          <div style="margin-top:4px;color:#555;">昼：${lunchFoodLabels.length?lunchFoodLabels.map(l=>`${escapeHtml(l)}：${foodStats.lunch[l]}`).join("　"):"なし"}　／　夜：${dinnerFoodLabels.length?dinnerFoodLabels.map(l=>`${escapeHtml(l)}：${foodStats.dinner[l]}`).join("　"):"なし"}</div>
         </div>` : "";
     const rowsHtml = list.map(r=>{
       const dur = r.durationMin||180;
@@ -1587,8 +1613,8 @@ function printDayLedger(){
     area.innerHTML = `
       <h2>BBQ場 予約台帳　${fmtDateJP(state.currentDate)}（${weekdayLabel(state.currentDate)}）</h2>
       <div style="border:1px solid #999;border-radius:6px;padding:8px 12px;margin-bottom:10px;font-size:12px;display:flex;gap:18px;">
-        <span>予約件数：${active.length}件</span>
-        <span>総人数：${totalPeopleAll}名</span>
+        <span>予約件数：${active.length}件（昼${resvStats.lunch}件／夜${resvStats.dinner}件）</span>
+        <span>総人数：${totalPeopleAll}名（昼${peopleStats.lunch}名／夜${peopleStats.dinner}名）</span>
         <span>利用テーブル総数：${tableStats.total}卓（昼${tableStats.lunch}卓／夜${tableStats.dinner}卓）</span>
         <span>売上見込：${fmtYen(revenue)}</span>
       </div>
@@ -1637,8 +1663,9 @@ function buildSlipHtml(record){
       </div>
 
       <div class="slip-box slip-write-box">
-        <div class="row"><span>テーブル数</span><span class="write-line">　　　卓</span></div>
-        <div class="row"><span>終了時刻</span><span class="write-line">　　　</span></div>
+        <div class="row"><span>テーブル数</span><span class="write-line write-line-short">　　　　　　卓</span></div>
+        <div class="row"><span>テーブル番号</span><span class="write-line write-line-long">　</span></div>
+        <div class="row"><span>終了時刻</span><span class="write-line write-line-short">　</span></div>
       </div>
 
       <div class="section-head">利用料の詳細</div>
@@ -1765,10 +1792,16 @@ function renderSalesView(){
   if (fromVal) dates = dates.filter(d=> d >= fromVal);
   if (toVal) dates = dates.filter(d=> d <= toVal);
 
+  const sessionFilter = r => {
+    if (state.salesSession === "all") return true;
+    const isDinner = isDinnerStart(r.start);
+    return state.salesSession === "dinner" ? isDinner : !isDinner;
+  };
+
   let grand = {count:0, people:0, usage:0, food:0, subtotal:0, cancelFee:0, total:0};
 
   const rowsHtml = dates.map(date=>{
-    const list = byDate[date];
+    const list = byDate[date].filter(sessionFilter);
     const active = list.filter(r=>r.status!=="cancelled");
     const cancelled = list.filter(r=>r.status==="cancelled");
     const count = active.length;
@@ -1794,8 +1827,9 @@ function renderSalesView(){
     </tr>`;
   }).join("");
 
+  const sessionLabel = {all:"通し", lunch:"昼営業のみ", dinner:"夜営業のみ"}[state.salesSession];
   document.getElementById("salesSummary").innerHTML = `
-    <span>対象日数 <b>${dates.length}</b>日（クリックでその日のタイムラインへ移動できます）</span>
+    <span>対象日数 <b>${dates.length}</b>日（${sessionLabel}・クリックでその日のタイムラインへ移動できます）</span>
     <span>予約件数合計 <b>${grand.count}</b>件</span>
     <span>来場人数合計 <b>${grand.people}</b>名</span>
     <span>売上合計 <b>${fmtYen(grand.total)}</b></span>
@@ -2009,6 +2043,13 @@ function init(){
     document.getElementById("salesFrom").value = "";
     document.getElementById("salesTo").value = "";
     renderSalesView();
+  });
+  document.querySelectorAll(".session-toggle-btn").forEach(b=>{
+    b.addEventListener("click", ()=>{
+      state.salesSession = b.dataset.session;
+      document.querySelectorAll(".session-toggle-btn").forEach(x=> x.classList.toggle("active", x===b));
+      renderSalesView();
+    });
   });
 
   document.getElementById("addOptionCatalogBtn").addEventListener("click", async ()=>{
