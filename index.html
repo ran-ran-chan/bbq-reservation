@@ -451,7 +451,7 @@
       <div class="hint" id="concurrentBookingHint"></div>
 
       <div class="field" style="margin-top:12px;">
-        <label>利用テーブル（任意・当日割り振りでも可／複数選択可・●は同じ時間帯に他の予約あり）</label>
+        <label>利用テーブル（空いている卓を1番から自動で確保します。当日、現場で変更可・●は同じ時間帯に他の予約あり）</label>
         <div class="table-grid" id="tableGrid"></div>
       </div>
 
@@ -553,6 +553,7 @@ let state = {
   bookingOptions: [],
   showCancelled: false,
   salesSession: "all",
+  tablesManuallyEdited: false,
   settings: {
     pricing:{adult:0,child:0,infant:0},
     optionCatalog: DEFAULT_OPTION_CATALOG.slice(),
@@ -1273,6 +1274,18 @@ async function buildTableGrid(){
       }
     }
   });
+
+  // 新規予約で、まだ手動でテーブルを選び直していない場合は、空いているテーブルを1番から順に自動で確保する
+  // （最終的な利用テーブルは当日現場側で変更可能）
+  if (!state.editingId && !state.tablesManuallyEdited){
+    const needed = computeFeeFromForm().suggestedTables;
+    const chosen = [];
+    for(let t=1; t<=TABLE_COUNT && chosen.length<needed; t++){
+      if (!busy.has(t)) chosen.push(t);
+    }
+    state.selectedTables = new Set(chosen);
+  }
+
   const concurrentHint = document.getElementById("concurrentBookingHint");
   if (overlapCount > 0){
     concurrentHint.textContent = `同じ時間帯の予約：${overlapCount}件（割当済み${overlapAssignedTables}卓 ＋ 未割当${overlapUnassignedEstimate}卓目安）→ 概算 ${overlapAssignedTables+overlapUnassignedEstimate}/${TABLE_COUNT}卓`;
@@ -1289,6 +1302,7 @@ async function buildTableGrid(){
     chip.className = `table-chip ${sel?"selected":""} ${isBusy?"busy":""}`;
     chip.textContent = "卓"+t;
     chip.addEventListener("click", ()=>{
+      state.tablesManuallyEdited = true;
       if (state.selectedTables.has(t)) state.selectedTables.delete(t);
       else state.selectedTables.add(t);
       buildTableGrid();
@@ -1410,6 +1424,7 @@ async function openAddModal(){
   state.editingId = null;
   state.editingOriginal = null;
   state.selectedTables = new Set();
+  state.tablesManuallyEdited = false;
   state.bookingOptions = [];
   document.getElementById("modalTitle").textContent = "予約を追加";
   document.getElementById("resForm").reset();
@@ -1446,6 +1461,7 @@ async function openEditModal(id, date){
   const r = list.find(x=>x.id===id);
   if (!r) return;
   state.editingId = id;
+  state.tablesManuallyEdited = true;
   state.editingOriginal = r;
   state.selectedTables = new Set(r.tables);
   state.bookingOptions = JSON.parse(JSON.stringify(r.options||[]));
@@ -2013,7 +2029,7 @@ function init(){
   document.getElementById("f_date").addEventListener("change", ()=>{ buildTableGrid(); updateFoodDeadlineWarning(); });
   document.querySelectorAll('input[name="f_source"]').forEach(r=> r.addEventListener("change", toggleNameFieldsBySource));
   ["f_adult","f_child","f_infant"].forEach(id=>{
-    document.getElementById(id).addEventListener("input", updateFeeAndSuggestion);
+    document.getElementById(id).addEventListener("input", ()=>{ updateFeeAndSuggestion(); buildTableGrid(); });
   });
 
   document.getElementById("addCustomOption").addEventListener("click", ()=>{
